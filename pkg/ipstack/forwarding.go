@@ -5,6 +5,7 @@ package ipstack
 import (
 	"net/netip"
 	"sync"
+	"ip-rip-in-peace/pkg/lnxconfig"
 )
 
 // This function validates a pakcet by checking TTL and checksum
@@ -28,6 +29,7 @@ type IPStack struct {
 	ForwardingTable *ForwardingTable
 	// Maybe a handler function as well for routers sending RIP updates?
 	Mutex           sync.RWMutex // Protects shared resources
+	IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
 }
 
 type ForwardingTableEntry struct {

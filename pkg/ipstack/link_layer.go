@@ -84,12 +84,59 @@ func (p *IPPacket) Marshal() ([]byte, error) {
 
 }
 
+func UnmarshalPacket(data []byte) (IPPacket, error) {
+	// Unmarshal byte array to packet
+	packet := IPPacket{}
+
+	buf := bytes.NewBuffer(data)
+
+	// Read source IP
+	source_ip := make([]byte, 4)
+	err := binary.Read(buf, binary.BigEndian, &source_ip)
+	if err != nil {
+		return IPPacket{}, err
+	}
+
+	packet.SourceIP, err = netip.ParseAddr(string(source_ip))
+	if err != nil {
+		return IPPacket{}, err
+	}
+
+	// Read destination IP
+	destination_ip := make([]byte, 4)
+	err = binary.Read(buf, binary.BigEndian, &destination_ip)
+	if err != nil {
+		return IPPacket{}, err
+	}
+	packet.DestinationIP, err = netip.ParseAddr(string(destination_ip))
+	if err != nil {
+		return IPPacket{}, err
+	}
+
+	// Read TTL
+	err = binary.Read(buf, binary.BigEndian, &packet.TTL)
+	if err != nil {
+		return IPPacket{}, err
+	}
+
+	// Read protocol
+	err = binary.Read(buf, binary.BigEndian, &packet.Protocol)
+	if err != nil {
+		return IPPacket{}, err
+	}
+
+	// Read payload
+	packet.Payload = buf.Bytes()
+
+	return packet, nil
+}
+
 // Here, we also define the interface struct
 type Interface struct {
 	Name      string
 	IPAddress netip.Addr
 	Netmask   netip.Prefix
-	UDPAddr   *net.UDPAddr
+	UDPAddr   *netip.AddrPort
 	Socket    *net.UDPConn
 	Neighbors map[netip.Addr]*net.UDPAddr // Neighbor IP to UDP address mapping
 }
@@ -107,4 +154,27 @@ func (i *Interface) SendToNeighbor(packet *IPPacket, neighbor netip.Addr) error 
 	}
 
 	return nil
+}
+
+// Intended for interfaces to use to listen for incoming packets
+func InterfaceListen(i *Interface, packetHandler func(*IPPacket)) {
+	// The packet handler function will likely be just one that holds on to it if it is the destination or forwards it if not
+	// Listen on interface for packets
+	for {
+		buffer := make([]byte, 1024)
+		n, _, err := i.Socket.ReadFromUDP(buffer)
+		if err != nil {
+			// Handle error
+		}
+
+		packet := IPPacket{
+			SourceIP:      i.IPAddress,
+			DestinationIP: netip.Addr{},
+			TTL:           64,
+			Protocol:      0,
+			Payload:       buffer[:n],
+		}
+
+		packetHandler(&packet)
+	}
 }
