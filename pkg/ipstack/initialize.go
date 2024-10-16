@@ -24,11 +24,12 @@ func InitNode(fileName string) (*IPStack, error) {
 		return nil, err
 	}
 
-	// Create IPStack
-	ipstack := IPStack{
-		Mutex: sync.RWMutex{},
-		IPConfig: ipconfig,
-	}
+	// Parse IP Config
+	ipstack := IPStack{}
+
+	// Create handlers
+	ipstack.Handlers = make(map[uint8]HandlerFunc)
+	
 
 	ipstack.ForwardingTable = &ForwardingTable{
 		Entries: make([]ForwardingTableEntry, 0),
@@ -44,7 +45,7 @@ func InitNode(fileName string) (*IPStack, error) {
 			Netmask:   iface.AssignedPrefix,
 			UDPAddr:   &iface.UDPAddr,
 			Socket:    nil,
-			Neighbors: make(map[netip.Addr]*net.UDPAddr),
+			Neighbors: make(map[netip.Addr]*netip.AddrPort),
 		}
 
 		// Create UDP socket
@@ -68,10 +69,14 @@ func InitNode(fileName string) (*IPStack, error) {
 	}
 	ipstack.Interfaces = ip_interfaces
 
+	// Add the neighbors to the interfaces	
+	for _, neighbor := range ipconfig.Neighbors {
+		ipstack.Interfaces[neighbor.InterfaceName].Neighbors[neighbor.DestAddr] = &neighbor.UDPAddr
+	}
+
 	// Assign IP addresses
 
 	// Populate forwarding table
-
 	for _, neighbor := range ipconfig.Neighbors {
 		prefix_length := 32
 		entry := ForwardingTableEntry{

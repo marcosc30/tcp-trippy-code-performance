@@ -28,7 +28,10 @@ func CreatePacket(source string, destination string, protocol uint8, payload str
 		TTL:           64,
 		Protocol:      protocol,
 		Payload:       []byte(payload),
+		Checksum:      0,
 	}
+
+	packet.Checksum = packet.CalculateChecksum()
 
 	return packet, nil
 }
@@ -41,6 +44,7 @@ type IPPacket struct {
 	TTL           uint8
 	Protocol      uint8 // This would be UDP or TCP later on
 	Payload       []byte
+	Checksum      uint16
 }
 
 func (p *IPPacket) Marshal() ([]byte, error) {
@@ -131,6 +135,13 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 	return packet, nil
 }
 
+func (p *IPPacket) CalculateChecksum() uint16 {
+	// Checksum is just based of header
+	// TODO: Implement checksum
+	return 0
+}
+
+
 // Here, we also define the interface struct
 type Interface struct {
 	Name      string
@@ -138,7 +149,8 @@ type Interface struct {
 	Netmask   netip.Prefix
 	UDPAddr   *netip.AddrPort
 	Socket    *net.UDPConn
-	Neighbors map[netip.Addr]*net.UDPAddr // Neighbor IP to UDP address mapping
+	Neighbors map[netip.Addr]*netip.AddrPort // Neighbor IP to UDP address mapping
+	Down      bool
 }
 
 // We define a method on the interface to send to a neighbor

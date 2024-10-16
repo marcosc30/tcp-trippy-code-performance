@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
+	"errors"
 )
 
 type RoutingMode int
@@ -196,7 +195,7 @@ func addOriginatingPrefix(config *IPConfig, prefix netip.Prefix) error {
 		}
 	}
 
-	return errors.Errorf("No matching prefix %s in config", prefix.String())
+	return fmt.Errorf("no matching prefix %s in config", prefix.String())
 }
 
 func addRipNeighbor(config *IPConfig, neighbor netip.Addr) error {
@@ -207,7 +206,7 @@ func addRipNeighbor(config *IPConfig, neighbor netip.Addr) error {
 		}
 	}
 
-	return errors.Errorf("RIP neighbor %s is not a neighbor IP", neighbor.String())
+	return fmt.Errorf("RIP neighbor %s is not a neighbor IP", neighbor.String())
 }
 
 func parseTcp(ln int, line string, config *IPConfig) error {
@@ -376,19 +375,18 @@ func parseNeighbor(ln int, line string, config *IPConfig) error {
 
 func newErrString(line int, msg string, args ...any) error {
 	_msg := fmt.Sprintf(msg, args...)
-	return errors.New(fmt.Sprintf("Parse error on line %d:  %s", line, _msg))
+	return fmt.Errorf("parse error on line %d: %s", line, _msg)
 }
 
 func newErr(line int, err error) error {
-	return errors.New(fmt.Sprintf("Parse error on line %d:  %s", line, err.Error()))
-
+	return fmt.Errorf("parse error on line %d: %w", line, err)
 }
 
 // Parse a configuration file
 func ParseConfig(configFile string) (*IPConfig, error) {
 	fd, err := os.Open(configFile)
 	if err != nil {
-		return nil, errors.New("Unable to open file")
+		return nil, errors.New("unable to open file")
 	}
 	defer fd.Close()
 

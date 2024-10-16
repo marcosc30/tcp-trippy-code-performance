@@ -1,6 +1,5 @@
 # Milestone
-Marcos Carsossa
-Taj Mahal
+Marcos Carsossa & Taj Mahal
 
 ## Description
 What are the different parts of your IP stack and what data structures do they use? How do these parts interact (API functions, channels, shared data, etc.)?
@@ -20,7 +19,6 @@ API Functions:
             Send to interface with send protocol
         Next hop
             Send to next hop with send protocol
-
     ```
 - Forwarding Function (takes in forwarding table, IP packet):
     - Will be used by routers to forward packets
@@ -70,8 +68,7 @@ Initialization:
 Host sends a packet to its router (only one option so easy):
 - First, you must set up the UDP packet, which can be an IP API function that sets up the IP header using the protocol
 - To send it, we can make a function that is the same as the one for forwarding to a specific router
-1. Decrements the TTL
-2. 
+
 
 Router receives it: 
 This part can be done with a table storing byte values representing source IP addresses (so that bit masks can be applied easily) and the destination IP address (has to keep into account masks so that longest-prefix matching can be implemented)
