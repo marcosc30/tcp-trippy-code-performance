@@ -10,8 +10,7 @@ import (
 	"log/slog"
 )
 
-// This file will define all of the functions needed for the REPL functionality
-
+// Reference file:
 // https://brown-csci1680.github.io/iptcp-docs/specs/repl-commands/
 
 func (s *IPStack) Repl() {
@@ -91,6 +90,7 @@ func (s *IPStack) Repl() {
 	}
 }
 
+// Passed as function to handle test packets
 func PrintPacket(packet *IPPacket) {
 	slog.Info("Received test packet")
 	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
