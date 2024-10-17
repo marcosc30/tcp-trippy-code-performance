@@ -6,17 +6,18 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+
+	"log/slog"
 )
 
 // This file will define all of the functions needed for the REPL functionality
 
 // https://brown-csci1680.github.io/iptcp-docs/specs/repl-commands/
 
-func (s *IPStack) REPL() {
+func (s *IPStack) Repl() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Println(line)
 
 		commands := strings.Split(line, " ")
 
@@ -30,7 +31,7 @@ func (s *IPStack) REPL() {
 				if iface.Down {
 					state = "down"
 				}
-				fmt.Printf("%s / %s/%s / %s\n", iface.Name, iface.IPAddress, iface.Netmask, state)
+				fmt.Printf("%s / %s / %s\n", iface.Name, iface.Netmask, state)
 				// Check the netmask part, the definition of prefix says length plus one so might be off by one
 			}
 		case "ln":
@@ -80,7 +81,10 @@ func (s *IPStack) REPL() {
 				fmt.Println("Error parsing address")
 				continue
 			}
-			s.SendIP(dst, 0, []byte(strings.Join(commands[2:], " ")))
+			err = s.SendIP(dst, 0, 32, []byte(strings.Join(commands[2:], " ")))
+			if err != nil {
+				fmt.Println("Error sending packet")
+			}
 		default:
 			fmt.Println("Unknown command")
 		}
@@ -88,6 +92,7 @@ func (s *IPStack) REPL() {
 }
 
 func PrintPacket(packet *IPPacket) {
+	slog.Info("Received test packet")
 	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
 	fmt.Printf("Received test packet: Src: %s, Dst: %s, TTL: %d, Data: %s\n", packet.SourceIP, packet.DestinationIP, packet.TTL, string(packet.Payload))
 }

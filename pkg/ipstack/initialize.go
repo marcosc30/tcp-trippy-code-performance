@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+	// "log/slog"
 )
 
 // InitNode parses a host's lnx file and returns an error for unsuccessful, maybe will add a return for the port for sending RIP updates if it is a router
@@ -29,7 +30,6 @@ func InitNode(fileName string) (*IPStack, error) {
 
 	// Create handlers
 	ipstack.Handlers = make(map[uint8]HandlerFunc)
-	
 
 	ipstack.ForwardingTable = &ForwardingTable{
 		Entries: make([]ForwardingTableEntry, 0),
@@ -48,7 +48,7 @@ func InitNode(fileName string) (*IPStack, error) {
 
 		inter := Interface{
 			Name:      iface.Name,
-			IPAddress: iface.AssignedIP,
+			IPAddr:    iface.AssignedIP,
 			Netmask:   iface.AssignedPrefix,
 			UDPAddr:   &udpaddr,
 			Socket:    nil,
@@ -58,7 +58,7 @@ func InitNode(fileName string) (*IPStack, error) {
 		// Create UDP socket
 		conn, err := net.ListenUDP("udp", &udpaddr)
 		if err != nil {
-		return nil, err
+			return nil, err
 		}
 		inter.Socket = conn
 
@@ -75,7 +75,7 @@ func InitNode(fileName string) (*IPStack, error) {
 	}
 	ipstack.Interfaces = ip_interfaces
 
-	// Add the neighbors to the interfaces	
+	// Add the neighbors to the interfaces
 	for _, neighbor := range ipconfig.Neighbors {
 		neighborUDP := net.UDPAddr{
 			IP:   neighbor.UDPAddr.Addr().AsSlice(),
@@ -100,15 +100,29 @@ func InitNode(fileName string) (*IPStack, error) {
 	return &ipstack, nil
 }
 
-func Init_RIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
+func (ipstack *IPStack) InitializeHostDefault() {
+	// We grab the neighbor, which we assume is only the router since it is a host
+	router_neighbor := ipstack.ForwardingTable.Entries[1]
+
+	// We copy the neighbor's entry in the forwarding table but make its prefix 0 to be default
+	default_entry := ForwardingTableEntry{
+		DestinationPrefix: netip.PrefixFrom(router_neighbor.DestinationPrefix.Addr(), 0),
+		NextHop:           router_neighbor.NextHop,
+		Interface:         router_neighbor.Interface,
+	}
+
+	ipstack.ForwardingTable.Entries = append(ipstack.ForwardingTable.Entries, default_entry)
+}
+
+func InitRIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
 	// Create routing table
 	// A different function in routing.go is used to send RIP updates, with routers needing to have it running on a separate thread
 	ripTable := RIPTable{
-		Entries: make([]RIPTableEntry, 0),
+		Entries:  make([]RIPTableEntry, 0),
 		RipMutex: &sync.Mutex{},
 	}
 
-	// Add entries to routing table, 
+	// Add entries to routing table,
 	// The valid part of the entries may be unnecessary, as is adding neighbors to the entries list (we can just add new neighbors
 	// and remove invalid ones as RIP updates come in)
 	for _, neighbor := range ipconfig.Neighbors {
@@ -117,7 +131,7 @@ func Init_RIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
 			nextHop:  neighbor.DestAddr,
 			cost:     1,
 			timer:    time.Now(),
-			valid:   false,
+			valid:    false,
 		}
 		ripTable.Entries = append(ripTable.Entries, entry)
 	}

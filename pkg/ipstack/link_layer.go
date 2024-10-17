@@ -3,13 +3,15 @@ package ipstack
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"log/slog"
 	"net"
 	"net/netip"
 )
 
 // This file focuses on sending the packets themselves, given adequete port information
 
-func CreatePacket(source string, destination string, protocol uint8, payload string) (IPPacket, error) {
+func CreatePacket(source string, destination string, ttl uint8, protocol uint8, payload string) (IPPacket, error) {
 	// Create packet struct
 
 	source_ip, err := netip.ParseAddr(source)
@@ -25,7 +27,7 @@ func CreatePacket(source string, destination string, protocol uint8, payload str
 	packet := IPPacket{
 		SourceIP:      netip.Addr(source_ip),
 		DestinationIP: netip.Addr(destination_ip),
-		TTL:           64,
+		TTL:           ttl,
 		Protocol:      protocol,
 		Payload:       []byte(payload),
 		Checksum:      0,
@@ -84,6 +86,11 @@ func (p *IPPacket) Marshal() ([]byte, error) {
 		return nil, err
 	}
 
+	err = binary.Write(buf, binary.BigEndian, p.Checksum)
+	if err != nil {
+		return nil, err
+	}
+
 	return buf.Bytes(), nil
 
 }
@@ -101,20 +108,22 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 		return IPPacket{}, err
 	}
 
-	packet.SourceIP, err = netip.ParseAddr(string(source_ip))
-	if err != nil {
+	sourceIP, ok := netip.AddrFromSlice(source_ip)
+	if !ok {
 		return IPPacket{}, err
 	}
+	packet.SourceIP = sourceIP
 
 	// Read destination IP
 	destination_ip := make([]byte, 4)
 	err = binary.Read(buf, binary.BigEndian, &destination_ip)
 	if err != nil {
-		return IPPacket{}, err
+		return IPPacket{}, errors.New("error unmarshalling destination IP")
 	}
-	packet.DestinationIP, err = netip.ParseAddr(string(destination_ip))
-	if err != nil {
-		return IPPacket{}, err
+
+	packet.DestinationIP, ok = netip.AddrFromSlice(destination_ip)
+	if !ok {
+		return IPPacket{}, errors.New("error unmarshalling destination IP")
 	}
 
 	// Read TTL
@@ -141,11 +150,10 @@ func (p *IPPacket) CalculateChecksum() uint16 {
 	return 0
 }
 
-
 // Here, we also define the interface struct
 type Interface struct {
 	Name      string
-	IPAddress netip.Addr
+	IPAddr    netip.Addr
 	Netmask   netip.Prefix
 	UDPAddr   *net.UDPAddr
 	Socket    *net.UDPConn
@@ -153,17 +161,19 @@ type Interface struct {
 	Down      bool
 }
 
-// We define a method on the interface to send to a neighbor
-func (i *Interface) SendToNeighbor(packet *IPPacket, neighbor netip.Addr) error {
-	// Send packet to neighbor
+func (i *Interface) SendPacket(packet *IPPacket, nextHop netip.Addr) error {
+	// Send packet to nextHop
 	marshalled_packet, err := packet.Marshal()
 	if err != nil {
 		return err
 	}
 
-	// Go from netip.Addr to net.UDPAddr
+	// Check if nextHop is in table
+	if _, ok := i.Neighbors[nextHop]; !ok {
+		return errors.New("nextHop not in neighbors table")
+	}
 
-	_, err = i.Socket.WriteToUDP(marshalled_packet, i.Neighbors[neighbor])
+	_, err = i.Socket.WriteToUDP(marshalled_packet, i.Neighbors[nextHop])
 	if err != nil {
 		return err
 	}
@@ -172,7 +182,7 @@ func (i *Interface) SendToNeighbor(packet *IPPacket, neighbor netip.Addr) error 
 }
 
 // Intended for interfaces to use to listen for incoming packets
-func InterfaceListen(i *Interface, packetHandler func(*IPPacket)) {
+func InterfaceListen(i *Interface, stack *IPStack) {
 	// The packet handler function will likely be just one that holds on to it if it is the destination or forwards it if not
 	// Listen on interface for packets
 	for {
@@ -182,16 +192,11 @@ func InterfaceListen(i *Interface, packetHandler func(*IPPacket)) {
 			// Handle error
 		}
 
-		packet := IPPacket{
-			SourceIP:      i.IPAddress,
-			DestinationIP: netip.Addr{},
-			TTL:           64,
-			Protocol:      0,
-			Payload:       buffer[:n],
+		packet, err := UnmarshalPacket(buffer[:n])
+		if err != nil {
+			slog.Error("Error unmarshalling packet: %v", err)
 		}
 
-		packetHandler(&packet)
+		ReceivePacket(&packet, stack)
 	}
 }
-
-
