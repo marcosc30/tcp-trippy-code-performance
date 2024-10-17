@@ -3,7 +3,6 @@ package ipstack
 // This is the main file that contains the forwarding logic, as well as important structs for IP like IPStack, and forwarding table
 
 import (
-	"log/slog"
 	"net/netip"
 	"sync"
 )
