@@ -1,13 +1,14 @@
 package ipstack
 
 import (
+	"errors"
+	"log/slog"
 	"net/netip"
 	"sync"
 	"time"
 )
 
-// Here, we will define all functions and structs related specifically to routers, mainly RIP and the structs needed for routers
-
+// Table for RIP
 type RIPTableEntry struct {
 	destAddr netip.Prefix
 	nextHop  netip.Addr
@@ -17,9 +18,62 @@ type RIPTableEntry struct {
 }
 
 type RIPTable struct {
-	Entries               []RIPTableEntry
-	UpdateNeighbors       []netip.Addr
-	RipPeriodicUpdateRate time.Duration
-	RipTimeoutThreshold   time.Duration
-	RipMutex              *sync.Mutex
+	Entries            []RIPTableEntry
+	UpdateNeighbors    []netip.Addr
+	PeriodicUpdateRate time.Duration
+	TimeoutThreshold   time.Duration
+	Mutex              *sync.Mutex
+}
+
+// RIP Functions
+
+// General packet handler
+func HandleRIPPacket(packet *IPPacket, stack *IPStack) {
+	ripMessage, err := UnmarshalRIPMessage(packet.Payload)
+	if err != nil {
+		slog.Error("Error unmarshalling RIP message", "error", err)
+		return
+	}
+
+	slog.Info("Received RIP message", "message", ripMessage)
+
+	switch ripMessage.command {
+	case 1: // Request
+		stack.SendRIPResponse(packet, ripMessage)
+	case 2: // Response
+		stack.ProcessRIPResponse(packet, ripMessage)
+	}
+}
+
+func (stack *IPStack) SendRIPResponse(packet *IPPacket, ripMessage RIPMessage) {
+	return
+}
+
+func (stack *IPStack) ProcessRIPResponse(packet *IPPacket, ripMessage RIPMessage) {
+	return
+}
+
+// Finds the next hop for a destination address
+func (ripTable *RIPTable) Lookup(destAddr netip.Addr) (netip.Addr, error) {
+	ripTable.Mutex.Lock()
+	defer ripTable.Mutex.Unlock()
+
+	// For all prefix matches, find the one with the lowest cost
+	lowestCost := 16 // Max is 16 (= infinity)
+	lowestHop := netip.Addr{}
+
+	for _, entry := range ripTable.Entries {
+		if entry.destAddr.Contains(destAddr) {
+			if entry.cost < lowestCost {
+				lowestCost = entry.cost
+				lowestHop = entry.nextHop
+			}
+		}
+	}
+
+	if lowestCost == 16 {
+		return netip.Addr{}, errors.New("no route to destination")
+	}
+
+	return lowestHop, nil
 }

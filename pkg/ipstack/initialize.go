@@ -97,6 +97,12 @@ func InitNode(fileName string) (*IPStack, error) {
 		ipstack.ForwardingTable.Entries = append(ipstack.ForwardingTable.Entries, entry)
 	}
 
+	// Initialize RIP Table to be empty
+	ipstack.RIPTable = &RIPTable{
+		Entries: make([]RIPTableEntry, 0),
+		Mutex: &sync.Mutex{},
+	}
+
 	return &ipstack, nil
 }
 
@@ -119,9 +125,10 @@ func InitRIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
 	// A different function in routing.go is used to send RIP updates, with routers needing to have it running on a separate thread
 	ripTable := RIPTable{
 		Entries:  make([]RIPTableEntry, 0),
-		RipMutex: &sync.Mutex{},
+		Mutex: &sync.Mutex{},
 	}
 
+	// TODO: Do we need this?
 	// Add entries to routing table,
 	// The valid part of the entries may be unnecessary, as is adding neighbors to the entries list (we can just add new neighbors
 	// and remove invalid ones as RIP updates come in)
@@ -136,8 +143,8 @@ func InitRIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
 		ripTable.Entries = append(ripTable.Entries, entry)
 	}
 
-	ripTable.RipPeriodicUpdateRate = ipconfig.RipPeriodicUpdateRate
-	ripTable.RipTimeoutThreshold = ipconfig.RipTimeoutThreshold
+	ripTable.PeriodicUpdateRate = ipconfig.RipPeriodicUpdateRate
+	ripTable.TimeoutThreshold = ipconfig.RipTimeoutThreshold
 	ripTable.UpdateNeighbors = ipconfig.RipNeighbors
 
 	return &ripTable, nil

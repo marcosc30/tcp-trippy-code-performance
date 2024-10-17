@@ -3,19 +3,19 @@ package ipstack
 import (
 	"sync"
 	"net/netip"
-	"log/slog"
 )
 
 type IPStack struct {
 	Interfaces      map[string]*Interface
 	ForwardingTable *ForwardingTable
+	RIPTable        *RIPTable
 	// Maybe a handler function as well for routers sending RIP updates?
 	Mutex sync.RWMutex // Protects shared resources
 	// IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
 	Handlers map[uint8]HandlerFunc
 }
 
-type HandlerFunc func(*IPPacket)
+type HandlerFunc func(*IPPacket, *IPStack)
 
 func (s *IPStack) SendIP(dst netip.Addr, protocolNum uint8, ttl uint8, data []byte) error {
 	// We treat it the same as receive packet, but we don't need to decrement TTL
@@ -43,7 +43,7 @@ func (s *IPStack) HandlePacket(packet *IPPacket) {
 		return
 	}
 
-	handler(packet)
+	handler(packet, s)
 }
 
 
@@ -73,8 +73,15 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 
 	// Check for no match
 	if interfaceName == "" {
-		slog.Info("No match in forwarding table")
-		return
+		// If no match in forwarding table, check RIP table
+		ripNextHop, err := ipstack.RIPTable.Lookup(packet.DestinationIP)
+
+		if err != nil {
+			// Drop packet
+			return
+		}
+
+		interfaceName, nextHop = NextHop(ripNextHop, ipstack.ForwardingTable)
 	}
 
 	nextIF := ipstack.Interfaces[interfaceName]

@@ -91,7 +91,7 @@ func (s *IPStack) Repl() {
 }
 
 // Passed as function to handle test packets
-func PrintPacket(packet *IPPacket) {
+func PrintPacket(packet *IPPacket, stack *IPStack) {
 	slog.Info("Received test packet")
 	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
 	fmt.Printf("Received test packet: Src: %s, Dst: %s, TTL: %d, Data: %s\n", packet.SourceIP, packet.DestinationIP, packet.TTL, string(packet.Payload))
