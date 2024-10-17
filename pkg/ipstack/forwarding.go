@@ -22,8 +22,8 @@ func ValidatePacket(packet IPPacket) bool {
 	return true
 }
 
-func RecievePacket(packet *IPPacket, ipstack *IPStack) {
-	// Recieve packet at the network level
+func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
+	// Receive packet at the network level
 
 	// 1. Validate packet
 	if !ValidatePacket(*packet) {
@@ -32,36 +32,41 @@ func RecievePacket(packet *IPPacket, ipstack *IPStack) {
 		return
 	}
 
-	next_hop := NextHop(packet.DestinationIP, ipstack.ForwardingTable)
-	// 2. Is it for me?
+	// 2. For me? Check all interfaces
+	for _, iface := range ipstack.Interfaces {
+		if iface.IPAddr == packet.Destination {
+			// Packet is for me
+			// Handle packet
+			IPStack.HandlePacket(packet)
+		}
+	}
 
+	// 3. Forward packet, doesn't matter if it is local or not based on 
+	// how we have it structured
+	nextIF, nextHop := NextHop(packet.Destination, ipstack.ForwardingTable)
 
-
-}
-
-func ForwardPacket(packet *IPPacket, forward_table *ForwardingTable) {
-	// 
+	// Send packet to next hop
+	nextIF.SendPacket(packet, nextHop)
 }
 
 // Uses longest-prefix matching to find the next hop for a destination
-func NextHop(destination netip.Addr, forwardingTable *ForwardingTable) netip.Addr {
+func NextHop(destination netip.Addr, forwardingTable *ForwardingTable) (string, netip.Addr) {
 	forwardingTable.Mutex.Lock();
 	defer forwardingTable.Mutex.Unlock();
 
-	bestMatch := netip.Addr{}
-	bestPrefix := netip.Prefix{}
+	bestMatch := ForwardingTableEntry{}	
+	bestPrefix := netip.Prefix{};
 
 	for _, entry := range forwardingTable.Entries {
 		if entry.DestinationPrefix.Contains(destination) {
-			if entry.DestinationPrefix.Len() > bestPrefix.Len() {
+			if entry.DestinationPrefix.Length > bestPrefix.Length {
+				bestMatch = entry
 				bestPrefix = entry.DestinationPrefix
-				bestMatch = entry.NextHop
 			}
 		}
 	}
 
-
-	return bestMatch
+	return bestMatch.Interface, bestMatch.NextHop
 }
 
 type IPStack struct {
@@ -87,12 +92,6 @@ type ForwardingTable struct {
 
 type HandlerFunc func(...) 
 
-func (s *IPStack) Initialize(configInfo IPConfig) (error) {
-	s.Handlers = make(map[uint8]HandlerFunc)
-
-	return IPStack{}, nil
-}
-
 func (s *IPStack) SendIP(dst netip.Addr, protocolNum uint8, data []byte) error {
 	return nil
 }
@@ -102,5 +101,12 @@ func (s *IPStack) RegisterHandler(protocolNum uint8, handler HandlerFunc) {
 }
 
 func (s *IPStack) HandlePacket(packet IPPacket) {
-	
+	// Check if we have a handler for this protocol
+	handler, ok := s.Handlers[packet.Protocol]
+	if !ok {
+		// Drop packet
+		return
+	}
+
+	handler(packet)
 }

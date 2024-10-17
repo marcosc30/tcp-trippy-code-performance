@@ -147,9 +147,9 @@ type Interface struct {
 	Name      string
 	IPAddress netip.Addr
 	Netmask   netip.Prefix
-	UDPAddr   *netip.AddrPort
+	UDPAddr   *net.UDPAddr
 	Socket    *net.UDPConn
-	Neighbors map[netip.Addr]*netip.AddrPort // Neighbor IP to UDP address mapping
+	Neighbors map[netip.Addr]*net.UDPAddr // Neighbor IP to UDP address mapping
 	Down      bool
 }
 
@@ -160,6 +160,9 @@ func (i *Interface) SendToNeighbor(packet *IPPacket, neighbor netip.Addr) error 
 	if err != nil {
 		return err
 	}
+
+	// Go from netip.Addr to net.UDPAddr
+
 	_, err = i.Socket.WriteToUDP(marshalled_packet, i.Neighbors[neighbor])
 	if err != nil {
 		return err
@@ -190,3 +193,5 @@ func InterfaceListen(i *Interface, packetHandler func(*IPPacket)) {
 		packetHandler(&packet)
 	}
 }
+
+

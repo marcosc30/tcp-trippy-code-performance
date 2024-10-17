@@ -33,26 +33,32 @@ func InitNode(fileName string) (*IPStack, error) {
 
 	ipstack.ForwardingTable = &ForwardingTable{
 		Entries: make([]ForwardingTableEntry, 0),
+		Mutex:   sync.RWMutex{},
 	}
 
 	// Create interfaces
 	ip_interfaces := make(map[string]*Interface)
 
 	for _, iface := range ipconfig.Interfaces {
+		// Convert from netip.Addr to net.UDPAddr
+		udpaddr := net.UDPAddr{
+			IP:   iface.UDPAddr.Addr().AsSlice(),
+			Port: int(iface.UDPAddr.Port()),
+		}
+
 		inter := Interface{
 			Name:      iface.Name,
 			IPAddress: iface.AssignedIP,
 			Netmask:   iface.AssignedPrefix,
-			UDPAddr:   &iface.UDPAddr,
+			UDPAddr:   &udpaddr,
 			Socket:    nil,
-			Neighbors: make(map[netip.Addr]*netip.AddrPort),
+			Neighbors: make(map[netip.Addr]*net.UDPAddr),
 		}
 
 		// Create UDP socket
-		udpaddr := net.UDPAddrFromAddrPort(*inter.UDPAddr)
-		conn, err := net.ListenUDP("udp", udpaddr)
+		conn, err := net.ListenUDP("udp", &udpaddr)
 		if err != nil {
-			return nil, err
+		return nil, err
 		}
 		inter.Socket = conn
 
@@ -71,7 +77,11 @@ func InitNode(fileName string) (*IPStack, error) {
 
 	// Add the neighbors to the interfaces	
 	for _, neighbor := range ipconfig.Neighbors {
-		ipstack.Interfaces[neighbor.InterfaceName].Neighbors[neighbor.DestAddr] = &neighbor.UDPAddr
+		neighborUDP := net.UDPAddr{
+			IP:   neighbor.UDPAddr.Addr().AsSlice(),
+			Port: int(neighbor.UDPAddr.Port()),
+		}
+		ipstack.Interfaces[neighbor.InterfaceName].Neighbors[neighbor.DestAddr] = &neighborUDP
 	}
 
 	// Assign IP addresses
@@ -95,6 +105,7 @@ func Init_RIP(ipconfig lnxconfig.IPConfig) (*RIPTable, error) {
 	// A different function in routing.go is used to send RIP updates, with routers needing to have it running on a separate thread
 	ripTable := RIPTable{
 		Entries: make([]RIPTableEntry, 0),
+		RipMutex: &sync.Mutex{},
 	}
 
 	// Add entries to routing table, 

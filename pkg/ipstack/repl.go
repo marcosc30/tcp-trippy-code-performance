@@ -3,7 +3,9 @@ package ipstack
 import (
 	"bufio"
 	"fmt"
+	"net/netip"
 	"os"
+	"strings"
 )
 
 // This file will define all of the functions needed for the REPL functionality
@@ -16,6 +18,76 @@ func (s *IPStack) REPL() {
 		line := scanner.Text()
 		fmt.Println(line)
 
-		//TODO: Implement REPL
+		commands := strings.Split(line, " ")
+
+		switch commands[0] {
+		case "li":
+			// List interfaces
+			// In format Name / Addr/Prefix / State
+			fmt.Println("Name / Addr/Prefix / State")
+			for _, iface := range s.Interfaces {
+				state := "up"
+				if iface.Down {
+					state = "down"
+				}
+				fmt.Printf("%s / %s/%s / %s\n", iface.Name, iface.IPAddress, iface.Netmask, state)
+				// Check the netmask part, the definition of prefix says length plus one so might be off by one
+			}
+		case "ln":
+			// List neighbors
+			// In format Iface / VIP / UDPAddr
+			for _, iface := range s.Interfaces {
+				if iface.Down {
+					continue
+				}
+				for neighbor, udpaddr := range iface.Neighbors {
+					fmt.Printf("%s / %s / %s\n", iface.Name, neighbor, udpaddr)
+					// Make sure this is printable
+				}
+			}
+		case "lr":
+			// List routes
+			// In format T / Prefix / Next hop / Cost
+			// T is the type, so L (local), R (RIP), or S (static)
+		case "down":
+			// Disable an interface
+			// No output expected
+			// Command should be formatted as "down <ifname>"
+			ifname := commands[1]
+			for _, iface := range s.Interfaces {
+				if iface.Name == ifname {
+					iface.Down = true
+					break
+				}
+			}
+		case "up":
+			// Enable an interface
+			// No output expected
+			// Command should be formatted as "up <ifname>"
+			ifname := commands[1]
+			for _, iface := range s.Interfaces {
+				if iface.Name == ifname {
+					iface.Down = false
+					break
+				}
+			}
+		case "send":
+			// Send a test packet
+			// No output expected
+			// Command should be formatted as <addr> <message ...>
+			dst, err := netip.ParseAddr(commands[1])
+			if err != nil {
+				fmt.Println("Error parsing address")
+				continue
+			}
+			s.SendIP(dst, 0, []byte(strings.Join(commands[2:], " ")))
+		default:
+			fmt.Println("Unknown command")
+		}
 	}
+}
+
+func PrintPacket(packet *IPPacket) {
+	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
+	fmt.Printf("Received test packet: Src: %s, Dst: %s, TTL: %d, Data: %s\n", packet.SourceIP, packet.DestinationIP, packet.TTL, string(packet.Payload))
 }
