@@ -104,14 +104,14 @@ import (
 
 // Goroutine to send periodic RIP updates
 func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
-	slog.Info("Starting periodic update", "updateRate", updateRate)
+	// slog.Info("Starting periodic update", "updateRate", updateRate)
 	ticker := time.NewTicker(updateRate)
 	defer ticker.Stop()
 	
 	for {
 		// Wait for ticker
 		<-ticker.C
-		slog.Info("Sending periodic RIP update")
+		// slog.Info("Sending periodic RIP update")
 
 		// Send RIP Response to all neighbors
 		for _, iface := range s.Interfaces {
@@ -178,10 +178,10 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		entries:     entries,
 	}
 
-	slog.Info("Sending RIP response", "dst", dst)
-	for _, entry := range entries {
-		slog.Info("\tEntry", "destAddr", uint32ToNetipAddr(entry.address), "mask", entry.mask, "cost", entry.cost)
-	}
+	// slog.Info("Sending RIP response", "dst", dst)
+	// for _, entry := range entries {
+	// 	slog.Info("\tEntry", "destAddr", uint32ToNetipAddr(entry.address), "mask", entry.mask, "cost", entry.cost)
+	// }
 
 	marshalled_message, err := MarshalRIPMessage(response)
 	if err != nil {
@@ -213,7 +213,7 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage) {
 	changedEntries := make([]RIPMessageEntry, 0)
 
-	slog.Info("Processing RIP response", "num_entries", len(ripMessage.entries))
+	// slog.Info("Processing RIP response", "num_entries", len(ripMessage.entries))
 
 	for _, entry := range ripMessage.entries {
 		destAddr := uint32ToNetipAddr(entry.address)
@@ -221,7 +221,7 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 		cost := int(entry.cost) + 1
 
 
-		slog.Info("Processing RIP response", "destAddr", destAddr, "mask", entry.mask, "destPrefix", destPrefix, "cost", cost)
+		// slog.Info("Processing RIP response", "destAddr", destAddr, "mask", entry.mask, "destPrefix", destPrefix, "cost", cost)
 
 		if cost >= 16 {
 			// TODO: Check this, should we remove or just not add
