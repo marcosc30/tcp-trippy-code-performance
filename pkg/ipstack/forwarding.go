@@ -70,16 +70,16 @@ func (ft *ForwardingTable) AddRoute(entry ForwardingTableEntry) {
 	ft.Entries = append(ft.Entries, entry)
 }
 
-func (ft *ForwardingTable) Lookup(prefix netip.Prefix) (ForwardingTableEntry, bool) {
+func (ft *ForwardingTable) Lookup(prefix netip.Prefix) (*ForwardingTableEntry, bool) {
 	ft.Mutex.RLock()
 	defer ft.Mutex.RUnlock()
 
 	for _, e := range ft.Entries {
 		if e.DestinationPrefix == prefix {
-			return e, true
+			return &e, true
 		}
 	}
-	return ForwardingTableEntry{}, false
+	return &ForwardingTableEntry{}, false
 }
 
 func (ft *ForwardingTable) RemoveRoute(prefix netip.Prefix) {

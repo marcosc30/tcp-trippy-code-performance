@@ -19,6 +19,10 @@ type Interface struct {
 }
 
 func (i *Interface) SendPacket(packet *IPPacket, nextHop netip.Addr) error {
+	if i.Down {
+		return errors.New("interface is down")
+	}
+
 	// Send packet to nextHop
 	marshalled_packet, err := packet.Marshal()
 	if err != nil {
@@ -43,6 +47,10 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 	// The packet handler function will likely be just one that holds on to it if it is the destination or forwards it if not
 	// Listen on interface for packets
 	for {
+		if i.Down {
+			continue
+		}
+
 		buffer := make([]byte, 1024)
 		n, _, err := i.Socket.ReadFromUDP(buffer)
 		if err != nil {

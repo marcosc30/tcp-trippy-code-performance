@@ -11,7 +11,7 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 	// slog.Info("Starting periodic update", "updateRate", updateRate)
 	ticker := time.NewTicker(updateRate)
 	defer ticker.Stop()
-	
+
 	for {
 		// Wait for ticker
 		<-ticker.C
@@ -19,6 +19,9 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 		// Send RIP Response to all neighbors
 		for _, iface := range s.Interfaces {
+			if iface.Down {
+				continue
+			}
 			for neighbor := range iface.Neighbors {
 				s.SendRIPResponse(neighbor, s.GetAllRIPEntries())
 			}
@@ -49,9 +52,9 @@ func RIPHandler(packet *IPPacket, stack *IPStack) {
 func (s *IPStack) SendRIPRequest() {
 	// slog.Info("Sending RIP request")
 	message := RIPMessage{
-		command: RIP_REQUEST,
+		command:     RIP_REQUEST,
 		num_entries: 0,
-		entries: []RIPMessageEntry{},
+		entries:     []RIPMessageEntry{},
 	}
 
 	marshalled_message, err := MarshalRIPMessage(message)
@@ -63,17 +66,16 @@ func (s *IPStack) SendRIPRequest() {
 	for _, iface := range s.Interfaces {
 		for neighbor := range iface.Neighbors {
 			packet := IPPacket{
-				SourceIP: iface.IPAddr,
+				SourceIP:      iface.IPAddr,
 				DestinationIP: neighbor,
-				TTL: 2, // 1 + 1 for recieving protocol based on how we do it
-				Protocol: RIP_PROTOCOL,
-				Payload: marshalled_message,
+				TTL:           2, // 1 + 1 for recieving protocol based on how we do it
+				Protocol:      RIP_PROTOCOL,
+				Payload:       marshalled_message,
 			}
 			iface.SendPacket(&packet, neighbor)
 		}
 	}
 }
-
 
 func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 	response := RIPMessage{
@@ -93,7 +95,7 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		return
 	}
 
-	err = s.SendIP(dst, RIP_PROTOCOL, 1 + 1, marshalled_message)
+	err = s.SendIP(dst, RIP_PROTOCOL, 1+1, marshalled_message)
 	if err != nil {
 		slog.Error("Error sending RIP response", "error", err)
 	}
@@ -124,12 +126,20 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 		destPrefix := netip.PrefixFrom(destAddr, int(entry.mask))
 		cost := int(entry.cost) + 1
 
-
 		// slog.Info("Processing RIP response", "destAddr", destAddr, "mask", entry.mask, "destPrefix", destPrefix, "cost", cost)
 
 		if cost >= 16 {
 			// TODO: Check this, should we remove or just not add
 			// might need to keep this for poison reverse
+			oldEntry, _ := s.ForwardingTable.Lookup(destPrefix)
+			if oldEntry.NextHop == sourceIP {
+				// slog.Info("Same route update received", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
+				// Update timestamp
+
+				oldEntry.LastUpdated = time.Now()
+				oldEntry.Metric = cost
+
+			}
 
 			// Dont add
 			continue
@@ -155,12 +165,19 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 					Interface:         s.getInterfaceForIP(sourceIP),
 					Metric:            cost,
 					Source:            SourceRIP,
+					LastUpdated:       time.Now(),
 				})
 				changedEntries = append(changedEntries, RIPMessageEntry{
 					address: entry.address,
 					mask:    entry.mask,
 					cost:    uint32(cost),
 				})
+			} 
+			if oldEntry.NextHop == sourceIP {
+				// slog.Info("Same route update received", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
+				// Update timestamp
+				oldEntry.LastUpdated = time.Now()
+				oldEntry.Metric = cost
 			}
 		}
 	}
@@ -205,7 +222,6 @@ func (s *IPStack) applyPoisonReverse(entries []RIPMessageEntry, neighbor netip.A
 	return poisonedEntries
 }
 
-
 func (s *IPStack) getInterfaceForIP(ip netip.Addr) string {
 	for name, iface := range s.Interfaces {
 		if iface.Netmask.Contains(ip) {
@@ -239,7 +255,6 @@ func uint32ToNetipAddr(ipUint32 uint32) netip.Addr {
 	}
 	return netip.AddrFrom4(ipBytes)
 }
-
 
 // TODO: Add RIP timeout threshold
 

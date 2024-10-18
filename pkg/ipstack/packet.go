@@ -1,11 +1,12 @@
 package ipstack
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
+	"log"
 	"net/netip"
-	"log/slog"
+
+	ipv4header "github.com/brown-csci1680/iptcp-headers"
+	"github.com/google/netstack/tcpip/header"
 )
 
 type IPPacket struct {
@@ -14,7 +15,7 @@ type IPPacket struct {
 	TTL           uint8
 	Protocol      Protocol
 	Payload       []byte
-	Checksum      uint16
+	Checksum      int
 }
 
 type Protocol uint8
@@ -23,7 +24,6 @@ const (
 	TEST_PROTOCOL Protocol = 1
 	RIP_PROTOCOL  Protocol = 200
 )
-
 
 func CreatePacket(source string, destination string, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
 	source_ip, err := netip.ParseAddr(source)
@@ -42,7 +42,6 @@ func CreatePacket(source string, destination string, ttl uint8, protocol Protoco
 		TTL:           ttl,
 		Protocol:      protocol,
 		Payload:       []byte(payload),
-		Checksum:      0,
 	}
 
 	packet.Checksum = packet.CalculateChecksum()
@@ -50,119 +49,96 @@ func CreatePacket(source string, destination string, ttl uint8, protocol Protoco
 	return packet, nil
 }
 
-
 func (p *IPPacket) Marshal() ([]byte, error) {
-	// Marshal packet to byte array
-	buf := new(bytes.Buffer)
-	// Check the MarshalBinary for possible errors, 
-	// I think it is the right function to use based on docs
-	bytes1, err := p.SourceIP.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	err = binary.Write(buf, binary.BigEndian, bytes1)
-	if err != nil {
-		return nil, err
-	}
-
-	bytes2, err := p.DestinationIP.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	err = binary.Write(buf, binary.BigEndian, bytes2)
-	if err != nil {
-		return nil, err
+	hdr := ipv4header.IPv4Header{
+		Version:  4,
+		Len:      20, // Header length is always 20 when no IP options
+		TOS:      0,
+		TotalLen: ipv4header.HeaderLen + len(p.Payload),
+		ID:       0,
+		Flags:    0,
+		FragOff:  0,
+		TTL:      int(p.TTL),
+		Protocol: int(p.Protocol),
+		Src:      p.SourceIP,
+		Dst:      p.DestinationIP,
+		Options:  []byte{},
+		Checksum: p.Checksum,
 	}
 
-	err = binary.Write(buf, binary.BigEndian, p.TTL)
+	// Assemble the header into a byte array
+	headerBytes, err := hdr.Marshal()
 	if err != nil {
-		return nil, err
+		log.Fatalln("Error marshalling header:  ", err)
 	}
 
-	err = binary.Write(buf, binary.BigEndian, p.Protocol)
-	if err != nil {
-		return nil, err
-	}
+	// Append header + message into one byte array
+	bytesToSend := make([]byte, 0, len(headerBytes)+len(p.Payload))
+	bytesToSend = append(bytesToSend, headerBytes...)
+	bytesToSend = append(bytesToSend, []byte(p.Payload)...)
 
-	err = binary.Write(buf, binary.BigEndian, p.Payload)
-	if err != nil {
-		return nil, err
-	}
-
-	err = binary.Write(buf, binary.BigEndian, p.Checksum)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return bytesToSend, nil
 }
 
 func UnmarshalPacket(data []byte) (IPPacket, error) {
-	// Unmarshal byte array to packet
-	packet := IPPacket{}
-
-	buf := bytes.NewBuffer(data)
-
-	// Read source IP
-	source_ip := make([]byte, 4)
-	err := binary.Read(buf, binary.BigEndian, &source_ip)
+	hdr, err := ipv4header.ParseHeader(data)
 	if err != nil {
 		return IPPacket{}, err
 	}
 
-	sourceIP, ok := netip.AddrFromSlice(source_ip)
-	if !ok {
-		return IPPacket{}, err
-	}
-	packet.SourceIP = sourceIP
-
-	// Read destination IP
-	destination_ip := make([]byte, 4)
-	err = binary.Read(buf, binary.BigEndian, &destination_ip)
-	if err != nil {
-		return IPPacket{}, errors.New("error unmarshalling destination IP")
+	payload := data[hdr.Len:]
+	packet := IPPacket{
+		SourceIP:      hdr.Src,
+		DestinationIP: hdr.Dst,
+		TTL:           uint8(hdr.TTL),
+		Protocol:      Protocol(hdr.Protocol),
+		Payload:       payload,
+		Checksum:      hdr.Checksum,
 	}
 
-	packet.DestinationIP, ok = netip.AddrFromSlice(destination_ip)
-	if !ok {
-		return IPPacket{}, errors.New("error unmarshalling destination IP")
+	if !ValidatePacket(packet) {
+		return IPPacket{}, errors.New("Invalid packet")
 	}
-
-	// Read TTL
-	err = binary.Read(buf, binary.BigEndian, &packet.TTL)
-	if err != nil {
-		return IPPacket{}, err
-	}
-
-	// Read protocol
-	err = binary.Read(buf, binary.BigEndian, &packet.Protocol)
-	if err != nil {
-		return IPPacket{}, err
-	}
-
-	// Read payload
-	packet.Payload = buf.Bytes()
 
 	return packet, nil
 }
 
 // This function validates a pakcet by checking TTL and checksum
 func ValidatePacket(packet IPPacket) bool {
-	if packet.TTL <= 0 {
-		slog.Info("Invalid TTL", "ttl", packet.TTL)
+	if packet.TTL == 0 {
 		return false
 	}
 
-	checksum := packet.CalculateChecksum()
-	if checksum != packet.Checksum {
-		slog.Info("Invalid checksum")
+	if packet.CalculateChecksum() != packet.Checksum {
 		return false
 	}
+
 	return true
 }
 
-func (p *IPPacket) CalculateChecksum() uint16 {
-	// Checksum is just based of header
-	// TODO: Implement checksum
-	return 0
+func (p *IPPacket) CalculateChecksum() int {
+	// This is a bit inefficient but we can focus on accuracy
+	hdr := ipv4header.IPv4Header{
+		Version:  4,
+		Len:      20, // Header length is always 20 when no IP options
+		TOS:      0,
+		TotalLen: ipv4header.HeaderLen + len(p.Payload),
+		ID:       0,
+		Flags:    0,
+		FragOff:  0,
+		TTL:      int(p.TTL),
+		Protocol: int(p.Protocol),
+		Checksum: 0, // Should be 0 until checksum is computed
+		Src:      p.SourceIP,
+		Dst:      p.DestinationIP,
+		Options:  []byte{},
+	}
+
+	bytes_before_checksum, err := hdr.Marshal()
+	if err != nil {
+		return 0
+	}
+
+	checksum := header.Checksum(bytes_before_checksum, 0)
+	return int(checksum)
 }
