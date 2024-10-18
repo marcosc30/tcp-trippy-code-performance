@@ -87,7 +87,7 @@ func (s *IPStack) Repl() {
 				fmt.Println("Error parsing address")
 				continue
 			}
-			err = s.SendIP(dst, 0, 32, []byte(strings.Join(commands[2:], " ")))
+			err = s.SendIP(dst, TEST_PROTOCOL, 32, []byte(strings.Join(commands[2:], " ")))
 			if err != nil {
 				fmt.Println("Error sending packet")
 			}

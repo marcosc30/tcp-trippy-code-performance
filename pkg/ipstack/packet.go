@@ -12,13 +12,20 @@ type IPPacket struct {
 	SourceIP      netip.Addr
 	DestinationIP netip.Addr
 	TTL           uint8
-	Protocol      uint8 // This would be UDP or TCP later on
+	Protocol      Protocol
 	Payload       []byte
 	Checksum      uint16
 }
 
+type Protocol uint8
 
-func CreatePacket(source string, destination string, ttl uint8, protocol uint8, payload string) (IPPacket, error) {
+const (
+	TEST_PROTOCOL Protocol = 1
+	RIP_PROTOCOL  Protocol = 200
+)
+
+
+func CreatePacket(source string, destination string, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
 	source_ip, err := netip.ParseAddr(source)
 	if err != nil {
 		return IPPacket{}, err

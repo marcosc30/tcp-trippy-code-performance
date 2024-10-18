@@ -28,7 +28,7 @@ func InitNode(fileName string) (*IPStack, error) {
 	ipstack := IPStack{}
 
 	// Create handlers
-	ipstack.Handlers = make(map[uint8]HandlerFunc)
+	ipstack.Handlers = make(map[Protocol]HandlerFunc)
 
 	ipstack.ForwardingTable = &ForwardingTable{
 		Entries: make([]ForwardingTableEntry, 0),

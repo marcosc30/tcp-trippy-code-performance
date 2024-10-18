@@ -11,16 +11,16 @@ type IPStack struct {
 	// Maybe a handler function as well for routers sending RIP updates?
 	Mutex sync.RWMutex // Protects shared resources
 	// IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
-	Handlers map[uint8]HandlerFunc
+	Handlers map[Protocol]HandlerFunc
 }
 
 type HandlerFunc func(*IPPacket, *IPStack)
 
-func (s *IPStack) SendIP(dst netip.Addr, protocolNum uint8, ttl uint8, data []byte) error {
+func (s *IPStack) SendIP(dst netip.Addr, protocol Protocol, ttl uint8, data []byte) error {
 	// We treat it the same as receive packet, but we don't need to decrement TTL
 
 	// We increment TTL by one to counter the decrement in ReceivePacket
-	packet, err := CreatePacket(s.Interfaces["if0"].IPAddr.String(), dst.String(), ttl, protocolNum, string(data))
+	packet, err := CreatePacket(s.Interfaces["if0"].IPAddr.String(), dst.String(), ttl, protocol, string(data))
 	if err != nil {
 		return err
 	}
@@ -30,8 +30,8 @@ func (s *IPStack) SendIP(dst netip.Addr, protocolNum uint8, ttl uint8, data []by
 	return nil
 }
 
-func (s *IPStack) RegisterHandler(protocolNum uint8, handler HandlerFunc) {
-	s.Handlers[protocolNum] = handler
+func (s *IPStack) RegisterHandler(protocol Protocol, handler HandlerFunc) {
+	s.Handlers[protocol] = handler
 }
 
 func (s *IPStack) HandlePacket(packet *IPPacket) {
