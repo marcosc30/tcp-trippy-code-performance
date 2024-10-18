@@ -242,7 +242,7 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 			// Add or update route
 			oldEntry, exists := s.ForwardingTable.Lookup(destPrefix)
 			if !exists || cost < oldEntry.Metric {
-				// slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost)
+				slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
 				s.ForwardingTable.AddRoute(ForwardingTableEntry{
 					DestinationPrefix: destPrefix,
 					NextHop:           sourceIP,

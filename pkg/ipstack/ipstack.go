@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	// "log/slog"
 	"ip-rip-in-peace/pkg/lnxconfig"
+	"errors"
 )
 
 type IPStack struct {
@@ -19,10 +20,16 @@ type IPStack struct {
 type HandlerFunc func(*IPPacket, *IPStack)
 
 func (s *IPStack) SendIP(dst netip.Addr, protocol Protocol, ttl uint8, data []byte) error {
-	// We treat it the same as receive packet, but we don't need to decrement TTL
+	// We treat it the same 
+	interfaceName, _ := s.ForwardingTable.NextHop(dst)
+	if interfaceName == "" {
+		return errors.New("no route to destination")
+	}
+
+	nextIF := s.Interfaces[interfaceName]
 
 	// We increment TTL by one to counter the decrement in ReceivePacket
-	packet, err := CreatePacket(s.Interfaces["if0"].IPAddr.String(), dst.String(), ttl, protocol, string(data))
+	packet, err := CreatePacket(nextIF.IPAddr.String(), dst.String(), ttl, protocol, string(data))
 	if err != nil {
 		return err
 	}
