@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"os"
 	"strings"
-
 	"log/slog"
 )
 
@@ -49,13 +48,8 @@ func (s *IPStack) Repl() {
 			// List routes
 			fmt.Println("T / Prefix / Next hop / Cost")
 			for _, entry := range s.ForwardingTable.Entries {
-				fmt.Println("Entry:")
-				fmt.Printf("%s", string(entry.Source))
-				fmt.Println("")
 				fmt.Printf("%s / %s / %s / %d\n", string(entry.Source[0]), entry.DestinationPrefix, entry.NextHop, entry.Metric)
-				fmt.Println("donezo")
 			}
-			fmt.Println("Done")
 		case "down":
 			// Disable an interface
 			// No output expected
@@ -98,7 +92,7 @@ func (s *IPStack) Repl() {
 }
 
 // Passed as function to handle test packets
-func PrintPacket(packet *IPPacket, stack *IPStack) {
+func 	PrintPacket(packet *IPPacket, stack *IPStack) {
 	slog.Info("Received test packet")
 	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
 	fmt.Printf("Received test packet: Src: %s, Dst: %s, TTL: %d, Data: %s\n", packet.SourceIP, packet.DestinationIP, packet.TTL, string(packet.Payload))

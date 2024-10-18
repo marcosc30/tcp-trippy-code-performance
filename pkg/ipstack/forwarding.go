@@ -48,17 +48,36 @@ func (ft *ForwardingTable) NextHop(destination netip.Addr) (string, netip.Addr) 
 	return bestMatch.Interface, bestMatch.NextHop
 }
 
+// Returns true if the route was added, false if it was updated
+// Adds if route is not present or cost is less than existing route
 func (ft *ForwardingTable) AddRoute(entry ForwardingTableEntry) {
 	ft.Mutex.Lock()
 	defer ft.Mutex.Unlock()
 
+	// First, check if the route is already in the table
 	for i, e := range ft.Entries {
 		if e.DestinationPrefix == entry.DestinationPrefix {
-			ft.Entries[i] = entry
+			if entry.Metric < e.Metric {
+				ft.Entries[i] = entry
+			}
 			return
 		}
 	}
+
+	// If not found, add it
 	ft.Entries = append(ft.Entries, entry)
+}
+
+func (ft *ForwardingTable) Lookup(prefix netip.Prefix) (ForwardingTableEntry, bool) {
+	ft.Mutex.RLock()
+	defer ft.Mutex.RUnlock()
+
+	for _, e := range ft.Entries {
+		if e.DestinationPrefix == prefix {
+			return e, true
+		}
+	}
+	return ForwardingTableEntry{}, false
 }
 
 func (ft *ForwardingTable) RemoveRoute(prefix netip.Prefix) {

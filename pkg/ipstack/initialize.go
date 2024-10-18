@@ -27,6 +27,8 @@ func InitNode(fileName string) (*IPStack, error) {
 	// Parse IP Config
 	ipstack := IPStack{}
 
+	ipstack.IPConfig = ipconfig
+
 	// Create handlers
 	ipstack.Handlers = make(map[Protocol]HandlerFunc)
 

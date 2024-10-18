@@ -149,7 +149,7 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 // This function validates a pakcet by checking TTL and checksum
 func ValidatePacket(packet IPPacket) bool {
 	if packet.TTL <= 0 {
-		slog.Info("Invalid TTL")
+		slog.Info("Invalid TTL", "ttl", packet.TTL)
 		return false
 	}
 

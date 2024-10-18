@@ -7,17 +7,23 @@ import (
 
 // Packet format for RIP
 type RIPMessage struct {
-	command uint16
+	command Command
 	num_entries uint16
 	entries []RIPMessageEntry
 }
+
+type Command uint16
+
+const (
+	RIP_REQUEST Command = 1
+	RIP_RESPONSE Command = 2
+)
 
 type RIPMessageEntry struct {
 	cost uint32
 	address uint32
 	mask uint32
 }
-
 
 // RIP Functions
 func MarshalRIPMessage(message RIPMessage) ([]byte, error) {

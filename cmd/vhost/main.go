@@ -23,7 +23,7 @@ func main() {
 	// stack.InitializeHostDefault()
 
 	// Add handler functions
-	stack.RegisterHandler(0, ipstack.PrintPacket) // Test protocol
+	stack.RegisterHandler(ipstack.TEST_PROTOCOL, ipstack.PrintPacket) // Test protocol
 	// TODO: Add RIP handler
 
 	for _, iface := range stack.Interfaces {

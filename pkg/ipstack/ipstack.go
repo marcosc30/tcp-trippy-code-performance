@@ -3,6 +3,8 @@ package ipstack
 import (
 	"sync"
 	"net/netip"
+	// "log/slog"
+	"ip-rip-in-peace/pkg/lnxconfig"
 )
 
 type IPStack struct {
@@ -10,7 +12,7 @@ type IPStack struct {
 	ForwardingTable *ForwardingTable
 	// Maybe a handler function as well for routers sending RIP updates?
 	Mutex sync.RWMutex // Protects shared resources
-	// IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
+	IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
 	Handlers map[Protocol]HandlerFunc
 }
 
@@ -60,7 +62,20 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 		}
 	}
 
-	// 3. Forward packet
+	// 3. Check if the destination is on a directly connected network
+	for _, iface := range ipstack.Interfaces {
+		if iface.Netmask.Contains(packet.DestinationIP) {
+			// Destination is on this network, send directly
+			nextIF := iface
+			packet.TTL--
+			packet.Checksum = packet.CalculateChecksum()
+			nextIF.SendPacket(packet, packet.DestinationIP)
+			return
+		}
+	}
+
+
+	// 4. Forward packet
 	interfaceName, nextHop := ipstack.ForwardingTable.NextHop(packet.DestinationIP)
 
 	if interfaceName == "" {
