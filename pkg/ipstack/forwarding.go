@@ -70,6 +70,7 @@ func (ft *ForwardingTable) AddRoute(entry ForwardingTableEntry) {
 	ft.Entries = append(ft.Entries, entry)
 }
 
+// Returns the route entry for a given prefix if it exists
 func (ft *ForwardingTable) Lookup(prefix netip.Prefix) (*ForwardingTableEntry, bool) {
 	ft.Mutex.RLock()
 	defer ft.Mutex.RUnlock()
@@ -82,6 +83,7 @@ func (ft *ForwardingTable) Lookup(prefix netip.Prefix) (*ForwardingTableEntry, b
 	return &ForwardingTableEntry{}, false
 }
 
+// Removes a route from the forwarding table
 func (ft *ForwardingTable) RemoveRoute(prefix netip.Prefix) {
 	ft.Mutex.Lock()
 	defer ft.Mutex.Unlock()

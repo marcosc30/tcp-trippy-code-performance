@@ -25,6 +25,7 @@ const (
 	RIP_PROTOCOL  Protocol = 200
 )
 
+// Creates a new packet struct with the given source, destination, ttl, protocol, and payload
 func CreatePacket(source string, destination string, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
 	source_ip, err := netip.ParseAddr(source)
 	if err != nil {
@@ -49,6 +50,7 @@ func CreatePacket(source string, destination string, ttl uint8, protocol Protoco
 	return packet, nil
 }
 
+// Marshals the packet into a byte array that corresponds to an actual IP packet
 func (p *IPPacket) Marshal() ([]byte, error) {
 	hdr := ipv4header.IPv4Header{
 		Version:  4,
@@ -80,6 +82,7 @@ func (p *IPPacket) Marshal() ([]byte, error) {
 	return bytesToSend, nil
 }
 
+// Unmarshals a byte array into an IPPacket struct
 func UnmarshalPacket(data []byte) (IPPacket, error) {
 	hdr, err := ipv4header.ParseHeader(data)
 	if err != nil {
@@ -97,7 +100,7 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 	}
 
 	if !ValidatePacket(packet) {
-		return IPPacket{}, errors.New("Invalid packet")
+		return IPPacket{}, errors.New("invalid packet")
 	}
 
 	return packet, nil
@@ -116,8 +119,8 @@ func ValidatePacket(packet IPPacket) bool {
 	return true
 }
 
+// This function calculates the checksum of the packet
 func (p *IPPacket) CalculateChecksum() int {
-	// This is a bit inefficient but we can focus on accuracy
 	hdr := ipv4header.IPv4Header{
 		Version:  4,
 		Len:      20, // Header length is always 20 when no IP options
