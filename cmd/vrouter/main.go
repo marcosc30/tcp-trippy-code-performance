@@ -29,8 +29,13 @@ func main() {
 		go ipstack.InterfaceListen(iface, stack)
 	}
 
+	// Send initial RIP request
+	stack.SendRIPRequest()
+
 	// Start periodic update
 	go stack.PeriodicUpdate(time.Duration(stack.IPConfig.RipPeriodicUpdateRate))
+
+	
 
 	stack.Repl()
 }

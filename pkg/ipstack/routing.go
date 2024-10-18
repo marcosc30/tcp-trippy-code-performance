@@ -124,7 +124,7 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 // Handle RIP Packets
 func RIPHandler(packet *IPPacket, stack *IPStack) {
-	slog.Info("Received RIP packet", "packet", packet)
+	slog.Info("Received RIP packet")
 	ripMessage, err := UnmarshalRIPMessage(packet.Payload)
 	if err != nil {
 		slog.Error("Error unmarshalling RIP message", "error", err)
@@ -133,14 +133,17 @@ func RIPHandler(packet *IPPacket, stack *IPStack) {
 
 	switch ripMessage.command {
 	case RIP_REQUEST:
+		slog.Info("Received RIP request")
 		stack.SendRIPResponse(packet.SourceIP, stack.GetAllRIPEntries())
 	case RIP_RESPONSE:
+		slog.Info("Received RIP response")
 		stack.ProcessRIPResponse(packet.SourceIP, ripMessage)
 	}
 }
 
 // Send RIP Request to all neighbors
 func (s *IPStack) SendRIPRequest() {
+	slog.Info("Sending RIP request")
 	message := RIPMessage{
 		command: RIP_REQUEST,
 		num_entries: 0,
@@ -154,14 +157,16 @@ func (s *IPStack) SendRIPRequest() {
 	}
 
 	for _, iface := range s.Interfaces {
-		packet := IPPacket{
-			SourceIP: iface.IPAddr,
-			DestinationIP: netip.Addr{},
-			TTL: 1,
-			Protocol: RIP_PROTOCOL,
-			Payload: marshalled_message,
+		for neighbor := range iface.Neighbors {
+			packet := IPPacket{
+				SourceIP: iface.IPAddr,
+				DestinationIP: neighbor,
+				TTL: 2, // 1 + 1 for recieving protocol based on how we do it
+				Protocol: RIP_PROTOCOL,
+				Payload: marshalled_message,
+			}
+			iface.SendPacket(&packet, neighbor)
 		}
-		iface.SendPacket(&packet, netip.Addr{})
 	}
 }
 
@@ -179,7 +184,7 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		return
 	}
 
-	err = s.SendIP(dst, RIP_PROTOCOL, 1, marshalled_message)
+	err = s.SendIP(dst, RIP_PROTOCOL, 1 + 1, marshalled_message)
 	if err != nil {
 		slog.Error("Error sending RIP response", "error", err)
 	}
@@ -248,6 +253,7 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 }
 
 func (s *IPStack) SendTriggeredUpdate(changedEntries []RIPMessageEntry) {
+	slog.Info("Sending triggered RIP update")
 	for _, iface := range s.Interfaces {
 		if iface.Down {
 			continue

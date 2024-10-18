@@ -85,6 +85,9 @@ func (s *IPStack) Repl() {
 			if err != nil {
 				fmt.Println("Error sending packet")
 			}
+		case "exit":
+			// Quit process
+			os.Exit(0)
 		default:
 			fmt.Println("Unknown command")
 		}

@@ -65,14 +65,14 @@ func InitNode(fileName string) (*IPStack, error) {
 
 		ip_interfaces[iface.Name] = &inter // iface.Name might not be unique, so check that
 
-		// We also add the interfaces to the forwarding table
-		entry := ForwardingTableEntry{
-			DestinationPrefix: iface.AssignedPrefix,
-			NextHop:           iface.AssignedIP,
-			Interface:         iface.Name,
-		}
+		// // We also add the interfaces to the forwarding table
+		// entry := ForwardingTableEntry{
+		// 	DestinationPrefix: iface.AssignedPrefix,
+		// 	NextHop:           iface.AssignedIP,
+		// 	Interface:         iface.Name,
+		// }
 
-		ipstack.ForwardingTable.Entries = append(ipstack.ForwardingTable.Entries, entry)
+		// ipstack.ForwardingTable.Entries = append(ipstack.ForwardingTable.Entries, entry)
 	}
 	ipstack.Interfaces = ip_interfaces
 
