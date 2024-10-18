@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"os"
-	"time"
 )
 
 func main() {
@@ -23,7 +22,7 @@ func main() {
 
 	// Add handler functions
 	stack.RegisterHandler(ipstack.TEST_PROTOCOL, ipstack.PrintPacket) // Test protocol
-	stack.RegisterHandler(ipstack.RIP_PROTOCOL, ipstack.RIPHandler) // RIP protocol
+	stack.RegisterHandler(ipstack.RIP_PROTOCOL, ipstack.RIPHandler)   // RIP protocol
 
 	for _, iface := range stack.Interfaces {
 		go ipstack.InterfaceListen(iface, stack)
@@ -33,9 +32,10 @@ func main() {
 	stack.SendRIPRequest()
 
 	// Start periodic update
-	go stack.PeriodicUpdate(time.Duration(stack.IPConfig.RipPeriodicUpdateRate))
+	go stack.PeriodicUpdate(stack.IPConfig.RipPeriodicUpdateRate)
 
-	
+	// Start periodic timeout checking
+	go stack.RIPTimeoutCheck(stack.IPConfig.RipTimeoutThreshold)
 
 	stack.Repl()
 }

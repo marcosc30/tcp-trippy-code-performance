@@ -244,9 +244,8 @@ func uint32ToNetipAddr(ipUint32 uint32) netip.Addr {
 // TODO: Add RIP timeout threshold
 
 // This function can run on a go routine and check for RIP timeouts
-func CheckTimeouts (s *IPStack) {
+func (s *IPStack) RIPTimeoutCheck(timeout time.Duration) {
 	// slog.Info("Starting RIP timeout check", "timeout", timeout)
-	timeout := s.IPConfig.RipTimeoutThreshold // This is a time.Duration
 	ticker := time.NewTicker(timeout)
 	defer ticker.Stop()
 
@@ -257,6 +256,12 @@ func CheckTimeouts (s *IPStack) {
 
 		// Check for timeouts
 		for _, entry := range s.ForwardingTable.Entries {
-			
+			if entry.Source == SourceRIP {
+				if time.Since(entry.LastUpdated) > timeout {
+					// slog.Info("RIP route timed out", "prefix", entry.DestinationPrefix)
+					s.ForwardingTable.RemoveRoute(entry.DestinationPrefix)
+				}
+			}
+		}
 	}
 }
