@@ -5,6 +5,7 @@ package ipstack
 import (
 	"net/netip"
 	"sync"
+	"time"
 )
 
 type ForwardingTableEntry struct {
@@ -13,6 +14,7 @@ type ForwardingTableEntry struct {
 	Interface         string // Interface identifier (e.g., "if0")
 	Metric            int
 	Source            RouteSource
+	LastUpdated       time.Time // Last time this route was updated
 }
 
 type RouteSource string

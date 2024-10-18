@@ -6,102 +6,6 @@ import (
 	"time"
 )
 
-// Table for RIP
-
-// func NewRIPTable(stack *IPStack) *RIPTable {
-// 	return &RIPTable{
-// 		Entries:            make(map[netip.Prefix]*RIPTableEntry),
-// 		UpdateNeighbors:    make([]netip.Addr, 0),
-// 		PeriodicUpdateRate: 5 * time.Second,
-// 		TimeoutThreshold:   12 * time.Second,
-// 		Mutex:              &sync.RWMutex{},
-// 		stack:              stack,
-// 	}
-// }
-
-// func (rt *RIPTable) AddOrUpdateEntry(prefix netip.Prefix, nextHop netip.Addr, cost int) {
-// 	rt.Mutex.Lock()
-// 	defer rt.Mutex.Unlock()
-
-// 	entry, exists := rt.Entries[prefix]
-// 	if !exists || cost < entry.cost {
-// 		if exists {
-// 			entry.timer.Stop()
-// 		}
-// 		timer := time.AfterFunc(rt.TimeoutThreshold, func() {
-// 			rt.ExpireRoute(prefix)
-// 		})
-// 		rt.Entries[prefix] = &RIPTableEntry{
-// 			destAddr: prefix,
-// 			nextHop:  nextHop,
-// 			cost:     cost,
-// 			timer:    timer,
-// 			valid:    true,
-// 		}
-// 		rt.TriggerUpdate()
-// 	} else if exists {
-// 		entry.timer.Reset(rt.TimeoutThreshold)
-// 	}
-// }
-
-// func (rt *RIPTable) ExpireRoute(prefix netip.Prefix) {
-// 	rt.Mutex.Lock()
-// 	defer rt.Mutex.Unlock()
-
-// 	entry, exists := rt.Entries[prefix]
-// 	if exists {
-// 		entry.cost = 16 // Set cost to infinity
-// 		entry.valid = false
-// 		rt.TriggerUpdate()
-// 		delete(rt.Entries, prefix)
-// 	}
-// }
-
-// func (rt *RIPTable) TriggerUpdate() {
-// 	// Implement triggered update logic here
-// 	// This should send updates to all neighbors with only the changed routes
-// }
-
-// func (rt *RIPTable) StartPeriodicUpdates() {
-// 	ticker := time.NewTicker(rt.PeriodicUpdateRate)
-// 	go func() {
-// 		for range ticker.C {
-// 			rt.SendPeriodicUpdate()
-// 		}
-// 	}()
-// }
-
-// func (rt *RIPTable) SendPeriodicUpdate() {
-// 	// Implement periodic update logic here
-// 	// This should send the entire routing table to all neighbors
-// }
-
-// // Finds the next hop for a destination address
-// func (ripTable *RIPTable) Lookup(destAddr netip.Addr) (netip.Addr, error) {
-// 	ripTable.Mutex.Lock()
-// 	defer ripTable.Mutex.Unlock()
-
-// 	// For all prefix matches, find the one with the lowest cost
-// 	lowestCost := 16 // Max is 16 (= infinity)
-// 	lowestHop := netip.Addr{}
-
-// 	for _, entry := range ripTable.Entries {
-// 		if entry.destAddr.Contains(destAddr) {
-// 			if entry.cost < lowestCost {
-// 				lowestCost = entry.cost
-// 				lowestHop = entry.nextHop
-// 			}
-// 		}
-// 	}
-
-// 	if lowestCost == 16 {
-// 		return netip.Addr{}, errors.New("no route to destination")
-// 	}
-
-// 	return lowestHop, nil
-// }
-
-
 // Goroutine to send periodic RIP updates
 func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 	// slog.Info("Starting periodic update", "updateRate", updateRate)
@@ -225,6 +129,7 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 
 		if cost >= 16 {
 			// TODO: Check this, should we remove or just not add
+			// might need to keep this for poison reverse
 
 			// Dont add
 			continue
@@ -240,9 +145,10 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 		} else {
 			// slog.Info("", "destPrefix", destPrefix, "cost", cost)
 			// Add or update route
+			// TODO: Update if higher but from same neighbor
 			oldEntry, exists := s.ForwardingTable.Lookup(destPrefix)
 			if !exists || cost < oldEntry.Metric {
-				slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
+				// slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
 				s.ForwardingTable.AddRoute(ForwardingTableEntry{
 					DestinationPrefix: destPrefix,
 					NextHop:           sourceIP,
@@ -265,7 +171,7 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 }
 
 func (s *IPStack) SendTriggeredUpdate(changedEntries []RIPMessageEntry) {
-	slog.Info("Sending triggered RIP update")
+	// slog.Info("Sending triggered RIP update")
 	for _, iface := range s.Interfaces {
 		if iface.Down {
 			continue
@@ -336,3 +242,21 @@ func uint32ToNetipAddr(ipUint32 uint32) netip.Addr {
 
 
 // TODO: Add RIP timeout threshold
+
+// This function can run on a go routine and check for RIP timeouts
+func CheckTimeouts (s *IPStack) {
+	// slog.Info("Starting RIP timeout check", "timeout", timeout)
+	timeout := s.IPConfig.RipTimeoutThreshold // This is a time.Duration
+	ticker := time.NewTicker(timeout)
+	defer ticker.Stop()
+
+	for {
+		// Wait for ticker
+		<-ticker.C
+		// slog.Info("Checking RIP timeouts")
+
+		// Check for timeouts
+		for _, entry := range s.ForwardingTable.Entries {
+			
+	}
+}
