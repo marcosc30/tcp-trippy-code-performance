@@ -3,7 +3,7 @@ package ipstack
 import (
 	"sync"
 	"net/netip"
-	"log/slog"
+	// "log/slog"
 	"ip-rip-in-peace/pkg/lnxconfig"
 	"errors"
 )
