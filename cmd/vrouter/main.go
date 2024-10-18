@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"os"
-	"time"
+	// "time"
 )
 
 func main() {
@@ -33,7 +33,7 @@ func main() {
 	stack.SendRIPRequest()
 
 	// Start periodic update
-	go stack.PeriodicUpdate(time.Duration(stack.IPConfig.RipPeriodicUpdateRate))
+	// go stack.PeriodicUpdate(time.Duration(stack.IPConfig.RipPeriodicUpdateRate))
 
 	
 

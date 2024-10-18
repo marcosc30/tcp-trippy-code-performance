@@ -83,6 +83,18 @@ func UnmarshalRIPMessage(message []byte) (RIPMessage, error) {
 		if err != nil {
 			return RIPMessage{}, err
 		}
+
+		err = binary.Read(buf, binary.BigEndian, &entry.address)
+		if err != nil {
+			return RIPMessage{}, err
+		}
+
+		err = binary.Read(buf, binary.BigEndian, &entry.mask)
+		if err != nil {
+			return RIPMessage{}, err
+		}
+
+		ripMessage.entries[i] = entry
 	}
 
 	return ripMessage, nil

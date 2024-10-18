@@ -124,7 +124,7 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 // Handle RIP Packets
 func RIPHandler(packet *IPPacket, stack *IPStack) {
-	slog.Info("Received RIP packet")
+	// slog.Info("Received RIP packet")
 	ripMessage, err := UnmarshalRIPMessage(packet.Payload)
 	if err != nil {
 		slog.Error("Error unmarshalling RIP message", "error", err)
@@ -133,17 +133,17 @@ func RIPHandler(packet *IPPacket, stack *IPStack) {
 
 	switch ripMessage.command {
 	case RIP_REQUEST:
-		slog.Info("Received RIP request")
+		// slog.Info("Received RIP request")
 		stack.SendRIPResponse(packet.SourceIP, stack.GetAllRIPEntries())
 	case RIP_RESPONSE:
-		slog.Info("Received RIP response")
+		// slog.Info("Received RIP response")
 		stack.ProcessRIPResponse(packet.SourceIP, ripMessage)
 	}
 }
 
 // Send RIP Request to all neighbors
 func (s *IPStack) SendRIPRequest() {
-	slog.Info("Sending RIP request")
+	// slog.Info("Sending RIP request")
 	message := RIPMessage{
 		command: RIP_REQUEST,
 		num_entries: 0,
@@ -178,6 +178,11 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		entries:     entries,
 	}
 
+	slog.Info("Sending RIP response", "dst", dst)
+	for _, entry := range entries {
+		slog.Info("\tEntry", "destAddr", uint32ToNetipAddr(entry.address), "mask", entry.mask, "cost", entry.cost)
+	}
+
 	marshalled_message, err := MarshalRIPMessage(response)
 	if err != nil {
 		slog.Error("Error marshalling RIP message", "error", err)
@@ -208,10 +213,15 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage) {
 	changedEntries := make([]RIPMessageEntry, 0)
 
+	slog.Info("Processing RIP response", "num_entries", len(ripMessage.entries))
+
 	for _, entry := range ripMessage.entries {
 		destAddr := uint32ToNetipAddr(entry.address)
 		destPrefix := netip.PrefixFrom(destAddr, int(entry.mask))
 		cost := int(entry.cost) + 1
+
+
+		slog.Info("Processing RIP response", "destAddr", destAddr, "mask", entry.mask, "destPrefix", destPrefix, "cost", cost)
 
 		if cost >= 16 {
 			// TODO: Check this, should we remove or just not add
@@ -228,9 +238,11 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 			// 	cost:    16, // Infinity
 			// })
 		} else {
+			// slog.Info("", "destPrefix", destPrefix, "cost", cost)
 			// Add or update route
 			oldEntry, exists := s.ForwardingTable.Lookup(destPrefix)
 			if !exists || cost < oldEntry.Metric {
+				// slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost)
 				s.ForwardingTable.AddRoute(ForwardingTableEntry{
 					DestinationPrefix: destPrefix,
 					NextHop:           sourceIP,
