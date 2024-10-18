@@ -11,7 +11,17 @@ type ForwardingTableEntry struct {
 	DestinationPrefix netip.Prefix
 	NextHop           netip.Addr
 	Interface         string // Interface identifier (e.g., "if0")
+	Metric            int
+	Source            RouteSource
 }
+
+type RouteSource string
+
+const (
+	SourceStatic    RouteSource = "STATIC"
+	SourceRIP       RouteSource = "RIP"
+	SourceConnected RouteSource = "CONNECTED"
+)
 
 type ForwardingTable struct {
 	Entries []ForwardingTableEntry
@@ -19,16 +29,16 @@ type ForwardingTable struct {
 }
 
 // Uses longest-prefix matching to find the next hop for a destination
-func NextHop(destination netip.Addr, forwardingTable *ForwardingTable) (string, netip.Addr) {
-	forwardingTable.Mutex.Lock()
-	defer forwardingTable.Mutex.Unlock()
+func (ft *ForwardingTable) NextHop(destination netip.Addr) (string, netip.Addr) {
+	ft.Mutex.RLock()
+	defer ft.Mutex.RUnlock()
 
-	bestMatch := ForwardingTableEntry{}
-	bestPrefix := netip.Prefix{}
+	var bestMatch ForwardingTableEntry
+	var bestPrefix netip.Prefix
 
-	for _, entry := range forwardingTable.Entries {
+	for _, entry := range ft.Entries {
 		if entry.DestinationPrefix.Contains(destination) {
-			if entry.DestinationPrefix.Bits() >= bestPrefix.Bits() {
+			if bestPrefix.Bits() == 0 || entry.DestinationPrefix.Bits() > bestPrefix.Bits() {
 				bestMatch = entry
 				bestPrefix = entry.DestinationPrefix
 			}
@@ -38,3 +48,27 @@ func NextHop(destination netip.Addr, forwardingTable *ForwardingTable) (string, 
 	return bestMatch.Interface, bestMatch.NextHop
 }
 
+func (ft *ForwardingTable) AddRoute(entry ForwardingTableEntry) {
+	ft.Mutex.Lock()
+	defer ft.Mutex.Unlock()
+
+	for i, e := range ft.Entries {
+		if e.DestinationPrefix == entry.DestinationPrefix {
+			ft.Entries[i] = entry
+			return
+		}
+	}
+	ft.Entries = append(ft.Entries, entry)
+}
+
+func (ft *ForwardingTable) RemoveRoute(prefix netip.Prefix) {
+	ft.Mutex.Lock()
+	defer ft.Mutex.Unlock()
+
+	for i, e := range ft.Entries {
+		if e.DestinationPrefix == prefix {
+			ft.Entries = append(ft.Entries[:i], ft.Entries[i+1:]...)
+			return
+		}
+	}
+}

@@ -8,7 +8,6 @@ import (
 type IPStack struct {
 	Interfaces      map[string]*Interface
 	ForwardingTable *ForwardingTable
-	RIPTable        *RIPTable
 	// Maybe a handler function as well for routers sending RIP updates?
 	Mutex sync.RWMutex // Protects shared resources
 	// IPConfig 	  *lnxconfig.IPConfig // We add this in case we need to access some information like TCP or router timing parameters
@@ -48,50 +47,31 @@ func (s *IPStack) HandlePacket(packet *IPPacket) {
 
 
 func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
-	// Print packet info
-
-	// Receive packet at the network level
-
 	// 1. Validate packet
 	if !ValidatePacket(*packet) {
-		// Drop packet
 		return
 	}
 
 	// 2. For me? Check all interfaces
 	for _, iface := range ipstack.Interfaces {
 		if iface.IPAddr == packet.DestinationIP {
-			// Packet is for me
-			// Handle packet
 			ipstack.HandlePacket(packet)
+			return
 		}
 	}
 
-	// 3. Forward packet, doesn't matter if it is local or not based on
-	// how we have it structured
-	interfaceName, nextHop := NextHop(packet.DestinationIP, ipstack.ForwardingTable)
+	// 3. Forward packet
+	interfaceName, nextHop := ipstack.ForwardingTable.NextHop(packet.DestinationIP)
 
-	// Check for no match
 	if interfaceName == "" {
-		// If no match in forwarding table, check RIP table
-		ripNextHop, err := ipstack.RIPTable.Lookup(packet.DestinationIP)
-
-		if err != nil {
-			// Drop packet
-			return
-		}
-
-		interfaceName, nextHop = NextHop(ripNextHop, ipstack.ForwardingTable)
+		// Drop packet if no route found
+		return
 	}
 
 	nextIF := ipstack.Interfaces[interfaceName]
 
-	// Decrement TTL
 	packet.TTL--
-
-	// Recalculate checksum
 	packet.Checksum = packet.CalculateChecksum()
 
-	// Send packet to next hop
 	nextIF.SendPacket(packet, nextHop)
 }

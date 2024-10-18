@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	stack.InitializeHostDefault()
+	// stack.InitializeHostDefault()
 
 	// Add handler functions
 	stack.RegisterHandler(0, ipstack.PrintPacket) // Test protocol

@@ -47,8 +47,15 @@ func (s *IPStack) Repl() {
 			}
 		case "lr":
 			// List routes
-			// In format T / Prefix / Next hop / Cost
-			// T is the type, so L (local), R (RIP), or S (static)
+			fmt.Println("T / Prefix / Next hop / Cost")
+			for _, entry := range s.ForwardingTable.Entries {
+				fmt.Println("Entry:")
+				fmt.Printf("%s", string(entry.Source))
+				fmt.Println("")
+				fmt.Printf("%s / %s / %s / %d\n", string(entry.Source[0]), entry.DestinationPrefix, entry.NextHop, entry.Metric)
+				fmt.Println("donezo")
+			}
+			fmt.Println("Done")
 		case "down":
 			// Disable an interface
 			// No output expected
