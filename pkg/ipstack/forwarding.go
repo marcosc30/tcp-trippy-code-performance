@@ -22,7 +22,7 @@ type RouteSource string
 const (
 	SourceStatic    RouteSource = "STATIC"
 	SourceRIP       RouteSource = "RIP"
-	SourceConnected RouteSource = "CONNECTED"
+	SourceLocal     RouteSource = "LOCAL"
 )
 
 type ForwardingTable struct {

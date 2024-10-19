@@ -1,10 +1,9 @@
 package ipstack
 
 import (
-	"errors"
+	// "errors"
 	"log"
 	"net/netip"
-
 	ipv4header "github.com/brown-csci1680/iptcp-headers"
 	"github.com/google/netstack/tcpip/header"
 )
@@ -89,23 +88,19 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 		Checksum:      hdr.Checksum,
 	}
 
-	if !ValidatePacket(packet) {
-		return IPPacket{}, errors.New("invalid packet")
-	}
-
 	return packet, nil
 }
 
 // This function validates a pakcet by checking TTL and checksum
 func ValidatePacket(packet IPPacket) bool {
-	log.Println(packet.TTL, packet.Protocol)
+	// log.Println(packet.TTL, packet.Protocol)
 	if packet.TTL == 0 {
-		log.Println("TTL is 0")
+		// log.Println("TTL is 0")
 		return false
 	}
 
 	if packet.CalculateChecksum() != packet.Checksum {
-		log.Println("Checksum is invalid")
+		// log.Println("Checksum is invalid")
 		return false
 	}
 

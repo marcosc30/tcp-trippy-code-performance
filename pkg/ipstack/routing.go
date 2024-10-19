@@ -15,7 +15,6 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 	for {
 		// Wait for ticker
 		<-ticker.C
-		// slog.Info("Sending periodic RIP update")
 
 		// Send RIP Response to all neighbors
 		for _, iface := range s.Interfaces {
@@ -31,7 +30,6 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 // Handle RIP Packets
 func RIPHandler(packet *IPPacket, stack *IPStack) {
-	// slog.Info("Received RIP packet")
 	ripMessage, err := UnmarshalRIPMessage(packet.Payload)
 	if err != nil {
 		slog.Error("Error unmarshalling RIP message", "error", err)
@@ -65,14 +63,7 @@ func (s *IPStack) SendRIPRequest() {
 
 	for _, iface := range s.Interfaces {
 		for neighbor := range iface.Neighbors {
-			packet := IPPacket{
-				SourceIP:      iface.IPAddr,
-				DestinationIP: neighbor,
-				TTL:           2, // 1 + 1 for recieving protocol based on how we do it
-				Protocol:      RIP_PROTOCOL,
-				Payload:       marshalled_message,
-			}
-			iface.SendPacket(&packet, neighbor)
+			s.SendIP(neighbor, RIP_PROTOCOL, 1, marshalled_message)
 		}
 	}
 }
@@ -115,31 +106,14 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 			// might need to keep this for poison reverse
 			oldEntry, _ := s.ForwardingTable.Lookup(destPrefix)
 			if oldEntry.NextHop == sourceIP {
-				// slog.Info("Same route update received", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
-				// Update timestamp
-
 				oldEntry.LastUpdated = time.Now()
 				oldEntry.Metric = cost
-
 			}
 
-			// Dont add
 			continue
-
-			// Remove the route if it exists
-			// // Remove the route if it exists
-			// s.ForwardingTable.RemoveRoute(destPrefix)
-			// changedEntries = append(changedEntries, RIPMessageEntry{
-			// 	address: entry.address,
-			// 	mask:    entry.mask,
-			// 	cost:    16, // Infinity
-			// })
 		} else {
-			// slog.Info("", "destPrefix", destPrefix, "cost", cost)
-			// Add or update route
 			oldEntry, exists := s.ForwardingTable.Lookup(destPrefix)
 			if !exists || cost < oldEntry.Metric {
-				// slog.Info("Better route found", "destPrefix", destPrefix, "cost", cost, "source", sourceIP)
 				s.ForwardingTable.AddRoute(ForwardingTableEntry{
 					DestinationPrefix: destPrefix,
 					NextHop:           sourceIP,
@@ -169,7 +143,6 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 
 // Send triggered update to all neighbors
 func (s *IPStack) SendTriggeredUpdate(changedEntries []RIPMessageEntry) {
-	// slog.Info("Sending triggered RIP update")
 	for _, iface := range s.Interfaces {
 		if iface.Down {
 			continue
@@ -188,14 +161,14 @@ func (s *IPStack) applyPoisonReverse(entries []RIPMessageEntry, neighbor netip.A
 		destPrefix := netip.PrefixFrom(uint32ToNetipAddr(entry.address), int(entry.mask))
 		route, exists := s.ForwardingTable.Lookup(destPrefix)
 		if exists && route.NextHop == neighbor {
-			// Apply poison reverse
+			// Poison reverse
 			poisonedEntries = append(poisonedEntries, RIPMessageEntry{
 				address: entry.address,
 				mask:    entry.mask,
 				cost:    16, // Infinity
 			})
 		} else {
-			// Apply split horizon (don't send routes learned from this neighbor back to it)
+			// Split horizon
 			if route.NextHop != neighbor {
 				poisonedEntries = append(poisonedEntries, entry)
 			}
@@ -248,13 +221,11 @@ func (s *IPStack) RIPTimeoutCheck(timeout time.Duration) {
 	for {
 		// Wait for ticker
 		<-ticker.C
-		// slog.Info("Checking RIP timeouts")
 
 		// Check for timeouts
 		for _, entry := range s.ForwardingTable.Entries {
 			if entry.Source == SourceRIP {
 				if time.Since(entry.LastUpdated) > timeout {
-					// slog.Info("RIP route timed out", "prefix", entry.DestinationPrefix)
 					s.ForwardingTable.RemoveRoute(entry.DestinationPrefix)
 				}
 			}

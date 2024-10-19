@@ -68,14 +68,14 @@ func InitNode(fileName string) (*IPStack, error) {
 		ipstack.Interfaces[neighbor.InterfaceName].Neighbors[neighbor.DestAddr] = &neighborUDP
 	}
 	
-	// Add connected routes
+	// Add local routes
 	for _, iface := range ipconfig.Interfaces {
 		ipstack.ForwardingTable.AddRoute(ForwardingTableEntry{
 			DestinationPrefix: iface.AssignedPrefix,
 			NextHop:           iface.AssignedIP,
 			Interface:         iface.Name,
 			Metric:            0,
-			Source:            SourceConnected,
+			Source:            SourceLocal,
 		})
 	}
 

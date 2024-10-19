@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"os"
 	"strings"
-	"log/slog"
 )
 
 // Reference file:
@@ -23,37 +22,52 @@ func (s *IPStack) Repl() {
 		case "li":
 			// List interfaces
 			// In format Name / Addr/Prefix / State
-			fmt.Println("Name / Addr/Prefix / State")
+			fmt.Println("Name Addr/Prefix State")
 			for _, iface := range s.Interfaces {
 				state := "up"
 				if iface.Down {
 					state = "down"
 				}
-				fmt.Printf("%s / %s / %s\n", iface.Name, iface.Netmask, state)
+				fmt.Printf("%s %s %s\n", iface.Name, iface.Netmask, state)
 				// Check the netmask part, the definition of prefix says length plus one so might be off by one
 			}
 		case "ln":
 			// List neighbors
 			// In format Iface / VIP / UDPAddr
+			fmt.Println("Iface VIP UDPAddr")
 			for _, iface := range s.Interfaces {
 				if iface.Down {
 					continue
 				}
 				for neighbor, udpaddr := range iface.Neighbors {
-					fmt.Printf("%s / %s / %s\n", iface.Name, neighbor, udpaddr)
+					fmt.Printf("%s %s %s\n", iface.Name, neighbor, udpaddr)
 					// Make sure this is printable
 				}
 			}
 		case "lr":
 			// List routes
-			fmt.Println("T / Prefix / Next hop / Cost")
+			fmt.Println("T Prefix Next hop Cost")
 			for _, entry := range s.ForwardingTable.Entries {
-				fmt.Printf("%s / %s / %s / %d\n", string(entry.Source[0]), entry.DestinationPrefix, entry.NextHop, entry.Metric)
+				// For local routes, print LOCAL:<ifname>
+				if entry.Source == SourceLocal {
+					fmt.Printf("L %s LOCAL:%s 0\n", entry.DestinationPrefix, entry.Interface)
+					continue
+				}
+				// For static routes, print with cost "-"
+				if entry.Source == SourceStatic {
+					fmt.Printf("S %s %s -\n", entry.DestinationPrefix, entry.NextHop)
+					continue
+				}
+				fmt.Printf("%s %s %s %d\n", string(entry.Source[0]), entry.DestinationPrefix, entry.NextHop, entry.Metric)
 			}
 		case "down":
 			// Disable an interface
 			// No output expected
 			// Command should be formatted as "down <ifname>"
+			if len(commands) != 2 {
+				fmt.Println("Usage: down <ifname>")
+				continue
+			}
 			ifname := commands[1]
 			for _, iface := range s.Interfaces {
 				if iface.Name == ifname {
@@ -65,6 +79,10 @@ func (s *IPStack) Repl() {
 			// Enable an interface
 			// No output expected
 			// Command should be formatted as "up <ifname>"
+			if len(commands) != 2 {
+				fmt.Println("Usage: up <ifname>")
+				continue
+			}
 			ifname := commands[1]
 			for _, iface := range s.Interfaces {
 				if iface.Name == ifname {
@@ -96,7 +114,6 @@ func (s *IPStack) Repl() {
 
 // Passed as function to handle test packets
 func 	PrintPacket(packet *IPPacket, stack *IPStack) {
-	slog.Info("Received test packet")
 	// Received test packet: Src: <source IP>, Dst: <destination IP>, TTL: <ttl>, Data: <message ...>
 	fmt.Printf("Received test packet: Src: %s, Dst: %s, TTL: %d, Data: %s\n", packet.SourceIP, packet.DestinationIP, packet.TTL, string(packet.Payload))
 }
