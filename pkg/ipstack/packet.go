@@ -131,5 +131,5 @@ func (p *IPPacket) CalculateChecksum() int {
 	}
 
 	checksum := header.Checksum(bytes_before_checksum, 0)
-	return int(checksum)
+	return int(checksum) ^ 0xffff
 }
