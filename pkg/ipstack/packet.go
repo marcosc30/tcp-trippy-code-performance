@@ -65,7 +65,7 @@ func (p *IPPacket) Marshal() ([]byte, error) {
 	}
 
 	// Append header + message into one byte array
-	bytesToSend := make([]byte, 0, len(headerBytes)+len(p.Payload))
+	bytesToSend := make([]byte, 0, ipv4header.HeaderLen+len(p.Payload))
 	bytesToSend = append(bytesToSend, headerBytes...)
 	bytesToSend = append(bytesToSend, []byte(p.Payload)...)
 
