@@ -30,6 +30,7 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 // Handle RIP Packets
 func RIPHandler(packet *IPPacket, stack *IPStack) {
+	// slog.Info("Received RIP packet", "source", packet.SourceIP, "destination", packet.DestinationIP, "protocol", packet.Protocol, "ttl", packet.TTL)
 	ripMessage, err := UnmarshalRIPMessage(packet.Payload)
 	if err != nil {
 		slog.Error("Error unmarshalling RIP message", "error", err)
@@ -61,12 +62,15 @@ func (s *IPStack) SendRIPRequest() {
 		return
 	}
 
-	for _, iface := range s.Interfaces {
-		for neighbor := range iface.Neighbors {
-			s.SendIP(neighbor, RIP_PROTOCOL, 1, marshalled_message)
-		}
+
+	// slog.Info("Sending RIP request to neighbors", "neighbors", s.IPConfig.RipNeighbors)
+	// Loop through forwarding table and send RIP request to all neighbors of RIP routes
+	for _, neighbor := range s.IPConfig.RipNeighbors {
+		// slog.Info("Sending RIP request to neighbor", "neighbor", neighbor)
+		s.SendIP(neighbor, RIP_PROTOCOL, 1 + 1, marshalled_message)
 	}
 }
+
 
 // Send RIP Response to destination
 func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
@@ -82,7 +86,7 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		return
 	}
 
-	err = s.SendIP(dst, RIP_PROTOCOL, 1, marshalled_message)
+	err = s.SendIP(dst, RIP_PROTOCOL, 1 + 1, marshalled_message)
 	if err != nil {
 		slog.Error("Error sending RIP response", "error", err)
 	}
@@ -143,14 +147,9 @@ func (s *IPStack) ProcessRIPResponse(sourceIP netip.Addr, ripMessage RIPMessage)
 
 // Send triggered update to all neighbors
 func (s *IPStack) SendTriggeredUpdate(changedEntries []RIPMessageEntry) {
-	for _, iface := range s.Interfaces {
-		if iface.Down {
-			continue
-		}
-		for neighbor := range iface.Neighbors {
-			poisonedEntries := s.applyPoisonReverse(changedEntries, neighbor)
-			s.SendRIPResponse(neighbor, poisonedEntries)
-		}
+	for _, neighbor := range s.IPConfig.RipNeighbors {
+		poisonedEntries := s.applyPoisonReverse(changedEntries, neighbor)
+		s.SendRIPResponse(neighbor, poisonedEntries)
 	}
 }
 

@@ -56,7 +56,7 @@ func (s *IPStack) HandlePacket(packet *IPPacket) {
 
 
 func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
-	// slog.Info("Received packet")
+	// slog.Info("Received packet", "source", packet.SourceIP, "destination", packet.DestinationIP, "protocol", packet.Protocol, "ttl", packet.TTL)
 	// 1. Validate packet
 	if !ValidatePacket(*packet) {
 		return
@@ -104,3 +104,4 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 
 	nextIF.SendPacket(packet, nextHop)
 }
+
