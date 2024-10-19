@@ -47,6 +47,7 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 	// The packet handler function will likely be just one that holds on to it if it is the destination or forwards it if not
 	// Listen on interface for packets
 	for {
+		//slog.Info("Listening on interface", "interface", i.Name)
 		if i.Down {
 			continue
 		}
@@ -55,11 +56,14 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 		n, _, err := i.Socket.ReadFromUDP(buffer)
 		if err != nil {
 			// Handle error
+			slog.Error("Error reading from interface", "error", err, "interface", i.Name)
 		}
+
+		slog.Info("Received packet", "interface", i.Name, "bytes", n)
 
 		packet, err := UnmarshalPacket(buffer[:n])
 		if err != nil {
-			slog.Error("Error unmarshalling packet", "error", err)
+			slog.Error("Error unmarshalling packet", "Interface", i.Name, "error", err)
 		}
 
 		ReceivePacket(&packet, stack)

@@ -26,20 +26,10 @@ const (
 )
 
 // Creates a new packet struct with the given source, destination, ttl, protocol, and payload
-func CreatePacket(source string, destination string, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
-	source_ip, err := netip.ParseAddr(source)
-	if err != nil {
-		return IPPacket{}, err
-	}
-
-	destination_ip, err := netip.ParseAddr(destination)
-	if err != nil {
-		return IPPacket{}, err
-	}
-
+func CreatePacket(source_ip netip.Addr, destination_ip netip.Addr, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
 	packet := IPPacket{
-		SourceIP:      netip.Addr(source_ip),
-		DestinationIP: netip.Addr(destination_ip),
+		SourceIP:      source_ip,
+		DestinationIP: destination_ip,
 		TTL:           ttl,
 		Protocol:      protocol,
 		Payload:       []byte(payload),
@@ -108,11 +98,14 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 
 // This function validates a pakcet by checking TTL and checksum
 func ValidatePacket(packet IPPacket) bool {
+	log.Println(packet.TTL, packet.Protocol)
 	if packet.TTL == 0 {
+		log.Println("TTL is 0")
 		return false
 	}
 
 	if packet.CalculateChecksum() != packet.Checksum {
+		log.Println("Checksum is invalid")
 		return false
 	}
 
