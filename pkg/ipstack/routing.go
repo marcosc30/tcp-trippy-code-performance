@@ -82,7 +82,7 @@ func (s *IPStack) SendRIPResponse(dst netip.Addr, entries []RIPMessageEntry) {
 		return
 	}
 
-	err = s.SendIP(dst, RIP_PROTOCOL, 1+1, marshalled_message)
+	err = s.SendIP(dst, RIP_PROTOCOL, 1, marshalled_message)
 	if err != nil {
 		slog.Error("Error sending RIP response", "error", err)
 	}
