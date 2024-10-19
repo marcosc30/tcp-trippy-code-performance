@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"ip-rip-in-peace/pkg/lnxconfig"
 	"errors"
-	"log/slog"
+	// "log/slog"
 )
 
 type IPStack struct {
@@ -74,9 +74,9 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 	// slog.Info("Packet not for me")
 
 	// 3. Check if the destination is on a directly connected network
-	if packet.Protocol != RIP_PROTOCOL {
-	slog.Info("Forwarding packet")
-	}
+	// if packet.Protocol != RIP_PROTOCOL {
+	// slog.Info("Forwarding packet")
+	// }
 	for _, iface := range ipstack.Interfaces {
 		if iface.Netmask.Contains(packet.DestinationIP) {
 			// Destination is on this network, send directly
