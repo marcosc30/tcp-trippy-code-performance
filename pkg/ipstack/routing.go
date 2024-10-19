@@ -16,10 +16,20 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 		// Wait for ticker
 		<-ticker.C
 
-		// Send RIP Response to all neighbors
+		// Send RIP Response to all RIP neighbors
 		for _, neighbor := range s.IPConfig.RipNeighbors {
 			s.SendRIPResponse(neighbor, s.GetAllRIPEntries())
 		}
+
+
+		// for _, iface := range s.Interfaces {
+		// 	if iface.Down {
+		// 		continue
+		// 	}
+		// 	for neighbor := range iface.Neighbors {
+		// 		s.SendRIPResponse(neighbor, s.GetAllRIPEntries())
+		// 	}
+		// }
 	}
 }
 
