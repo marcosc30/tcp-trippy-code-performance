@@ -20,7 +20,7 @@ type IPPacket struct {
 type Protocol uint8
 
 const (
-	TEST_PROTOCOL Protocol = 1
+	TEST_PROTOCOL Protocol = 0
 	RIP_PROTOCOL  Protocol = 200
 )
 
