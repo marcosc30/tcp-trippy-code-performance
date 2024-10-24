@@ -28,7 +28,7 @@ func (s *IPStack) Repl() {
 				if iface.Down {
 					state = "down"
 				}
-				fmt.Printf("%s %s %s\n", iface.Name, iface.Netmask, state)
+				fmt.Printf("%s %s %s\n", iface.Name, iface.IPAddr, state)
 				// Check the netmask part, the definition of prefix says length plus one so might be off by one
 			}
 		case "ln":
