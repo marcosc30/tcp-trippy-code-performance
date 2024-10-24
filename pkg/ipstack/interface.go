@@ -51,8 +51,6 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 			continue
 		}
 
-		slog.Debug("Listening for packets", "Interface", i.Name)
-
 		buffer := make([]byte, 1024)
 		n, _, err := i.Socket.ReadFromUDP(buffer)
 		if err != nil {
@@ -60,7 +58,6 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 			slog.Error("Error reading from interface", "error", err, "interface", i.Name)
 		}
 
-		slog.Debug("Received packet", "Interface", i.Name, "Packet", buffer[:n])
 
 		packet, err := UnmarshalPacket(buffer[:n])
 		if err != nil {
