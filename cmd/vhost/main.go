@@ -20,11 +20,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// stack.InitializeHostDefault()
-
 	// Add handler functions
 	stack.RegisterHandler(ipstack.TEST_PROTOCOL, ipstack.PrintPacket) // Test protocol
-	// TODO: Add RIP handler
 
 	for _, iface := range stack.Interfaces {
 		go ipstack.InterfaceListen(iface, stack)
