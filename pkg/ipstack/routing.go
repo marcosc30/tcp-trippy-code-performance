@@ -18,18 +18,9 @@ func (s *IPStack) PeriodicUpdate(updateRate time.Duration) {
 
 		// Send RIP Response to all RIP neighbors
 		for _, neighbor := range s.IPConfig.RipNeighbors {
-			s.SendRIPResponse(neighbor, s.GetAllRIPEntries())
+			poisonedEntries := s.applyPoisonReverse(s.GetAllRIPEntries(), neighbor)
+			s.SendRIPResponse(neighbor, poisonedEntries)
 		}
-
-
-		// for _, iface := range s.Interfaces {
-		// 	if iface.Down {
-		// 		continue
-		// 	}
-		// 	for neighbor := range iface.Neighbors {
-		// 		s.SendRIPResponse(neighbor, s.GetAllRIPEntries())
-		// 	}
-		// }
 	}
 }
 

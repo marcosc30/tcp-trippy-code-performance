@@ -1,0 +1,21 @@
+## Design Choices
+
+### How you build your abstractions for the IP layer and interfaces
+
+1. **Data Structures**:
+   - **Forwarding Table**: The `ForwardingTable` is a key data structure used to manage routing information. It contains entries of type `ForwardingTableEntry`, which include details like destination prefix, next hop, interface, metric, source, and last updated time.
+
+   - **Interface**: The `Interface` struct represents a network interface, holding information such as name, IP address, netmask, UDP address, socket, neighbors, and status (up or down).
+
+   - **IP Packet**: The `IPPacket` struct is used to represent an IP packet, including fields like source IP, destination IP, TTL, protocol, payload, and checksum.
+
+2. **Interaction between vhost and vrouter programs**:
+   - The `ForwardingTable` is used by both hosts and routers to determine the next hop for a given destination using longest-prefix matching.
+
+   - Interfaces listen for incoming packets and handle them based on whether they are destined for the local node or need to be forwarded.
+
+3. **Shared IP Stack Code**:
+   - The IP stack code is shared between the vhost and vrouter programs, allowing them to use common functions for packet creation, validation, and forwarding.
+   - Functions like `CreatePacket`, `Marshal`, `UnmarshalPacket`, and `ValidatePacket` are used to handle IP packets consistently across the system.
+
+These abstractions and interactions ensure that both hosts and routers can efficiently process and forward IP packets, maintaining a consistent and reliable network stack.
