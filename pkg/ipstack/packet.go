@@ -21,6 +21,7 @@ type Protocol uint8
 
 const (
 	TEST_PROTOCOL Protocol = 0
+	TCP_PROTOCOL  Protocol = 6
 	RIP_PROTOCOL  Protocol = 200
 )
 
