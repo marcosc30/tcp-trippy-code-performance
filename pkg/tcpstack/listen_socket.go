@@ -19,6 +19,8 @@ func VListen(tcpStack *TCPStack, localPort uint16) *ListenSocket {
 	tcpStack.VInsertTableEntry(TCPTableEntry{
 		LocalAddress: netip.AddrFrom4([4]byte{0, 0, 0, 0}),
 		LocalPort: localPort,
+		RemoteAddress: netip.AddrFrom4([4]byte{0, 0, 0, 0}),
+		RemotePort: 0,
 		State: TCP_LISTEN,
 		SocketStruct: ls,
 	})

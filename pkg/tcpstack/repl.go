@@ -74,8 +74,8 @@ func handleAccept(ts *TCPStack, port uint16) {
 	// Wait for connection
 	conn := ls.VAccept()
 	if conn != nil {
-		fmt.Printf("Accepted connection from %s:%d\n", 
-			conn.RemoteAddress, conn.RemotePort)
+		// fmt.Printf("Accepted connection from %s:%d\n", 
+		// 	conn.RemoteAddress, conn.RemotePort)
 	}
 }
 

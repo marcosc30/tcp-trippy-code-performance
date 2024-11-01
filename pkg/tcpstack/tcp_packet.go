@@ -45,11 +45,9 @@ func ParseTCPHeader(data []byte) (*TCPHeader, []byte) {
 }
 
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
-    fmt.Printf("Received TCP packet from %s to %s\n", srcAddr, dstAddr)
 	header, payload := ParseTCPHeader(packet)
 
 	entry, err := ts.VFindTableEntry(dstAddr, header.DestPort, srcAddr, header.SourcePort)
-	fmt.Printf("Found entry: %+v\n", entry)
 	if err != nil {
 		return err
 	}
