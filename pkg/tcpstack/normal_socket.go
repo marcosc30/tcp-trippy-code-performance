@@ -179,10 +179,8 @@ func (socket *NormalSocket) VRead(data []byte) (int, error) {
 		return 0, err
 	}
 
-	// Update receive window after reading data
 	socket.rcv.WND = uint16(socket.rcv.buf.Free())
 
-	// Send window update if needed
 	if socket.rcv.WND >= BUFFER_SIZE/2 {
 		header := &TCPHeader{
 			SourcePort: socket.LocalPort,
