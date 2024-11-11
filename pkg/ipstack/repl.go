@@ -99,6 +99,10 @@ func (s *IPStack) Repl() {
 				fmt.Println("Error parsing address")
 				continue
 			}
+			if len(commands) < 3 {
+				fmt.Println("Usage: send <addr> <message ...>")
+				continue
+			}
 			err = s.SendIP(dst, TEST_PROTOCOL, 16 + 1, []byte(strings.Join(commands[2:], " ")))
 			if err != nil {
 				fmt.Println("Error sending packet")
@@ -198,6 +202,12 @@ func (s *IPStack) ReplInput(scanner *bufio.Scanner) {
 			fmt.Println("Error parsing address")
 			return
 		}
+
+		if len(commands) < 3 {
+			fmt.Println("Usage: send <addr> <message ...>")
+			return	
+		}
+
 		err = s.SendIP(dst, TEST_PROTOCOL, 16 + 1, []byte(strings.Join(commands[2:], " ")))
 		if err != nil {
 			fmt.Println("Error sending packet")

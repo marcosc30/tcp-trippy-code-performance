@@ -5,6 +5,7 @@ import (
 )
 
 type ListenSocket struct {
+	SID int
 	localPort uint16
 	// Channel for pending connections
 	acceptQueue chan *NormalSocket
@@ -12,6 +13,7 @@ type ListenSocket struct {
 
 func VListen(tcpStack *TCPStack, localPort uint16) *ListenSocket {
 	ls := &ListenSocket{
+		SID: tcpStack.generateSID(),
 		localPort: localPort,
 		acceptQueue: make(chan *NormalSocket, 10), // Buffer size of 10
 	}
@@ -26,6 +28,10 @@ func VListen(tcpStack *TCPStack, localPort uint16) *ListenSocket {
 	})
 
 	return ls
+}
+
+func (ls *ListenSocket) GetSID() int {
+	return ls.SID
 }
 
 func (ls *ListenSocket) VAccept() *NormalSocket {

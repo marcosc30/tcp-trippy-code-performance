@@ -4,14 +4,41 @@ import (
 	"errors"
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
+	"os"
 	"sync"
+
+	"github.com/smallnest/ringbuffer"
 )
+
+const BUFFER_SIZE uint16 = 65535
 
 type TCPStack struct {
 	tcpTable []TCPTableEntry
 	mutex    sync.Mutex
 	ipStack  *ipstack.IPStack
+	rcv      RCV
+	snd      SND
 	nextPort uint16 // For ephemeral port allocation
+	nextSID  int
+}
+
+type SND struct {
+	buf *ringbuffer.RingBuffer
+	UNA uint32
+	NXT uint32
+	WND uint16
+	ISS uint32
+
+	writeReady chan struct{}
+}
+
+type RCV struct {
+	buf *ringbuffer.RingBuffer
+	NXT uint32
+	WND uint16
+	IRS uint32
+
+	dataReady chan struct{}
 }
 
 type TCPTableEntry struct {
@@ -25,6 +52,7 @@ type TCPTableEntry struct {
 
 type Socket interface {
 	VClose() error
+	GetSID() int
 }
 
 type TCPState int
@@ -37,11 +65,47 @@ const (
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
-	return &TCPStack{
+	result := &TCPStack{
 		tcpTable: make([]TCPTableEntry, 0),
 		ipStack:  ipStack,
 		nextPort: 49152, // Start of ephemeral port range
+		rcv: RCV{
+			buf: ringbuffer.New(int(BUFFER_SIZE)),
+			NXT: 0,
+			WND: 0,
+			IRS: 0,
+		},
+		snd: SND{
+			buf: ringbuffer.New(int(BUFFER_SIZE)),
+			UNA: 0,
+			NXT: 0,
+			WND: 0,
+			ISS: 0,
+		},
+		nextSID: 0,
 	}
+
+	result.rcv.buf.SetBlocking(true)
+	result.snd.buf.SetBlocking(true)
+
+	return result
+}
+
+func (ts *TCPStack) generateSID() int {
+	nextSID := ts.nextSID
+	ts.nextSID++
+	return nextSID
+}
+
+func (ts *TCPStack) getSocketByID(id int) Socket {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	for _, e := range ts.tcpTable {
+		if e.SocketStruct.GetSID() == id {
+			return e.SocketStruct
+		}
+	}
+	return nil
 }
 
 func (ts *TCPStack) VInsertTableEntry(entry TCPTableEntry) {
@@ -96,8 +160,21 @@ func (ts *TCPStack) allocateEphemeralPort() uint16 {
 
 	port := ts.nextPort
 	ts.nextPort++
-	if ts.nextPort > 65535 {
+	if ts.nextPort == 0 { //uint wraps
 		ts.nextPort = 49152
 	}
 	return port
+}
+
+func (ts *TCPStack) sendFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return nil
+}
+
+func (ts *TCPStack) receiveFile() error {
+	return nil
 }
