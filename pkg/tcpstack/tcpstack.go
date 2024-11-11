@@ -2,21 +2,21 @@ package tcpstack
 
 import (
 	"errors"
+	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
 	"sync"
-	"ip-rip-in-peace/pkg/ipstack"
 )
 
 type TCPStack struct {
 	tcpTable []TCPTableEntry
 	mutex    sync.Mutex
-	ipStack *ipstack.IPStack
-	nextPort uint16  // For ephemeral port allocation
+	ipStack  *ipstack.IPStack
+	nextPort uint16 // For ephemeral port allocation
 }
 
 type TCPTableEntry struct {
-	LocalAddress netip.Addr
-	LocalPort    uint16
+	LocalAddress  netip.Addr
+	LocalPort     uint16
 	RemoteAddress netip.Addr
 	RemotePort    uint16
 	State         TCPState
@@ -30,16 +30,16 @@ type Socket interface {
 type TCPState int
 
 const (
-	TCP_LISTEN TCPState = 0
-	TCP_SYN_SENT TCPState = 1
+	TCP_LISTEN       TCPState = 0
+	TCP_SYN_SENT     TCPState = 1
 	TCP_SYN_RECEIVED TCPState = 2
-	TCP_ESTABLISHED TCPState = 3
+	TCP_ESTABLISHED  TCPState = 3
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
 	return &TCPStack{
 		tcpTable: make([]TCPTableEntry, 0),
-		ipStack: ipStack,
+		ipStack:  ipStack,
 		nextPort: 49152, // Start of ephemeral port range
 	}
 }
@@ -67,18 +67,18 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 	// First, check if full 4-tuple match
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i]  // Get pointer to avoid copy
-		if e.LocalPort == localPort && 
-		   e.RemoteAddress == remoteAddress && e.RemotePort == remotePort {
+		e := &ts.tcpTable[i] // Get pointer to avoid copy
+		if e.LocalPort == localPort &&
+			e.RemoteAddress == remoteAddress && e.RemotePort == remotePort {
 			return e, nil
 		}
 	}
 
 	// Second, check for listening socket
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i]  // Get pointer to avoid copy
-		if e.LocalPort == localPort && 
-		   e.State == TCP_LISTEN {
+		e := &ts.tcpTable[i] // Get pointer to avoid copy
+		if e.LocalPort == localPort &&
+			e.State == TCP_LISTEN {
 			return e, nil
 		}
 	}
@@ -87,13 +87,13 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 }
 
 func (ts *TCPStack) sendPacket(dstAddr netip.Addr, data []byte) error {
-    return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
+	return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
 }
 
 func (ts *TCPStack) allocateEphemeralPort() uint16 {
 	ts.mutex.Lock()
 	defer ts.mutex.Unlock()
-	
+
 	port := ts.nextPort
 	ts.nextPort++
 	if ts.nextPort > 65535 {

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"ip-rip-in-peace/pkg/tcpstack"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -33,6 +35,55 @@ func main() {
 		go ipstack.InterfaceListen(iface, ipStack)
 	}
 
-	// Use TCP REPL instead of IP REPL
-	tcpStack.Repl()
+	// // Use TCP REPL instead of IP REPL
+	// tcpStack.Repl()
+
+	combinedREPL(tcpStack, ipStack)
+}
+
+func combinedREPL(tcpstack *tcpstack.TCPStack, ipstack *ipstack.IPStack) {
+	// Have a separate case for help to explain the different commands for both IP and TCP
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("REPL started. Type 'help' for TCP command instructions, and iphelp for IP command instructions.")
+
+	tcp_args := []string{"a", "c", "ls"}
+	ip_args := []string{"down", "up", "send", "li", "lr", "ln", "exit"}
+
+	OuterLoop: 
+		for {
+			fmt.Print("> ")
+			if !scanner.Scan() {
+				break
+			}
+
+			line := scanner.Text()
+			args := strings.Fields(line)
+			if len(args) == 0 {
+				continue
+			}
+
+			if args[0] == "help" {
+				tcpstack.ReplInput(scanner)
+				continue OuterLoop
+			}
+
+			for _, command := range tcp_args {
+				if args[0] == command {
+					// Execute TCP command
+					tcpstack.ReplInput(scanner)
+					continue OuterLoop
+				}
+			}
+
+			for _, command := range ip_args {
+				if args[0] == command {
+					// Execute IP command
+					ipstack.ReplInput(scanner)
+					continue OuterLoop
+				}
+			}
+
+			fmt.Println("Unknown command. Type 'help' for available commands.")
+
+		}
 }

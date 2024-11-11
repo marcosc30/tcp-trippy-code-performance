@@ -67,6 +67,51 @@ func (ts *TCPStack) Repl() {
 	}
 }
 
+func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
+	line := scanner.Text()
+	args := strings.Fields(line)
+
+	switch args[0] {
+	case "a":
+		if len(args) != 2 {
+			fmt.Println("Usage: a <port>")
+			return
+		}
+		port, err := strconv.ParseUint(args[1], 10, 16)
+		if err != nil {
+			fmt.Println("Invalid port number")
+			return
+		}
+		go handleAccept(ts, uint16(port))
+
+	case "c":
+		if len(args) != 3 {
+			fmt.Println("Usage: c <ip> <port>")
+			return
+		}
+		addr, err := netip.ParseAddr(args[1])
+		if err != nil {
+			fmt.Println("Invalid IP address")
+			return
+		}
+		port, err := strconv.ParseUint(args[2], 10, 16)
+		if err != nil {
+			fmt.Println("Invalid port number")
+			return
+		}
+		go handleConnect(ts, addr, uint16(port))
+
+	case "ls":
+		handleList(ts)
+
+	case "help":
+		printHelp()
+
+	default:
+		fmt.Println("Unknown command. Type 'help' for available commands.")
+	}
+}
+
 func handleAccept(ts *TCPStack, port uint16) {
 	ls := VListen(ts, port)
 	fmt.Printf("Listening on port %d\n", port)
@@ -74,7 +119,7 @@ func handleAccept(ts *TCPStack, port uint16) {
 	// Wait for connection
 	conn := ls.VAccept()
 	if conn != nil {
-		// fmt.Printf("Accepted connection from %s:%d\n", 
+		// fmt.Printf("Accepted connection from %s:%d\n",
 		// 	conn.RemoteAddress, conn.RemotePort)
 	}
 }
@@ -96,7 +141,7 @@ func handleList(ts *TCPStack) {
 	fmt.Println("\nActive TCP connections:")
 	fmt.Println("Local Address:Port\tRemote Address:Port\tState")
 	fmt.Println("-------------------------------------------------------")
-	
+
 	for _, entry := range ts.tcpTable {
 		state := getStateString(entry.State)
 		fmt.Printf("%s:%d\t%s:%d\t%s\n",
@@ -129,4 +174,4 @@ func printHelp() {
 	fmt.Println("  ls                - List all TCP connections")
 	fmt.Println("  help              - Show this help message")
 	fmt.Println()
-} 
+}
