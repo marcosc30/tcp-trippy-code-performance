@@ -75,6 +75,7 @@ func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
 func computeChecksum(packet []byte) uint16 {
 	// TODO: Implement checksum computation
 	// Might have to change serializeTCPPacket to include IP pseudo header
+	return 0
 }
 
 func generateInitialSeqNum() uint32 {
