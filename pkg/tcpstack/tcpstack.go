@@ -26,8 +26,6 @@ type SND struct {
 	NXT uint32  // next sequence number to be sent
 	WND uint16  // peer's advertised window size
 	ISS uint32  // initial send sequence number
-
-	writeReady chan struct{} // signals when we can send more data
 }
 
 type RCV struct {
@@ -35,8 +33,6 @@ type RCV struct {
 	WND uint16
 	NXT uint32  // next expected sequence number
 	IRS uint32  // initial receive sequence number
-
-	dataReady chan struct{} // signals when data is available to read
 }
 
 type TCPTableEntry struct {
