@@ -4,9 +4,7 @@ import (
 	"errors"
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
-	"os"
 	"sync"
-
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -24,21 +22,21 @@ type TCPStack struct {
 
 type SND struct {
 	buf *ringbuffer.RingBuffer
-	UNA uint32
-	NXT uint32
-	WND uint16
-	ISS uint32
+	UNA uint32  // oldest unacknowledged sequence number
+	NXT uint32  // next sequence number to be sent
+	WND uint16  // peer's advertised window size
+	ISS uint32  // initial send sequence number
 
-	writeReady chan struct{}
+	writeReady chan struct{} // signals when we can send more data
 }
 
 type RCV struct {
 	buf *ringbuffer.RingBuffer
-	NXT uint32
 	WND uint16
-	IRS uint32
+	NXT uint32  // next expected sequence number
+	IRS uint32  // initial receive sequence number
 
-	dataReady chan struct{}
+	dataReady chan struct{} // signals when data is available to read
 }
 
 type TCPTableEntry struct {
@@ -62,6 +60,13 @@ const (
 	TCP_SYN_SENT     TCPState = 1
 	TCP_SYN_RECEIVED TCPState = 2
 	TCP_ESTABLISHED  TCPState = 3
+	TCP_FIN_WAIT_1   TCPState = 4
+	TCP_FIN_WAIT_2   TCPState = 5
+	TCP_CLOSING      TCPState = 6
+	TCP_TIME_WAIT    TCPState = 7
+	TCP_CLOSE_WAIT   TCPState = 8
+	TCP_LAST_ACK     TCPState = 9
+	TCP_CLOSED       TCPState = 10
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
@@ -72,7 +77,6 @@ func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
 		rcv: RCV{
 			buf: ringbuffer.New(int(BUFFER_SIZE)),
 			NXT: 0,
-			WND: 0,
 			IRS: 0,
 		},
 		snd: SND{
@@ -98,8 +102,6 @@ func (ts *TCPStack) generateSID() int {
 }
 
 func (ts *TCPStack) getSocketByID(id int) Socket {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 	for _, e := range ts.tcpTable {
 		if e.SocketStruct.GetSID() == id {
 			return e.SocketStruct
@@ -131,7 +133,7 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 	// First, check if full 4-tuple match
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i] // Get pointer to avoid copy
+		e := &ts.tcpTable[i] 
 		if e.LocalPort == localPort &&
 			e.RemoteAddress == remoteAddress && e.RemotePort == remotePort {
 			return e, nil
@@ -140,7 +142,7 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 	// Second, check for listening socket
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i] // Get pointer to avoid copy
+		e := &ts.tcpTable[i] 
 		if e.LocalPort == localPort &&
 			e.State == TCP_LISTEN {
 			return e, nil
@@ -154,7 +156,7 @@ func (ts *TCPStack) sendPacket(dstAddr netip.Addr, data []byte) error {
 	return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
 }
 
-func (ts *TCPStack) allocateEphemeralPort() uint16 {
+func (ts *TCPStack) allocatePort() uint16 {
 	ts.mutex.Lock()
 	defer ts.mutex.Unlock()
 
@@ -164,17 +166,4 @@ func (ts *TCPStack) allocateEphemeralPort() uint16 {
 		ts.nextPort = 49152
 	}
 	return port
-}
-
-func (ts *TCPStack) sendFile(filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return nil
-}
-
-func (ts *TCPStack) receiveFile() error {
-	return nil
 }

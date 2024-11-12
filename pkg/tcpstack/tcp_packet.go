@@ -77,7 +77,3 @@ func generateInitialSeqNum() uint32 {
 	return uint32(time.Now().UnixNano() & 0xFFFFFFFF)
 }
 
-func generateEphemeralPort() uint16 {
-	// Start with a fixed port for testing
-	return 49152
-}

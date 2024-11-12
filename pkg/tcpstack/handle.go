@@ -15,6 +15,8 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 	}
 
 	switch entry.State {
+
+	// Handshake
 	case TCP_LISTEN:
 		fmt.Println("TCP_LISTEN")
 		if header.Flags&TCP_SYN != 0 {
@@ -32,6 +34,7 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 			handleACK(ts, entry, header)
 		}
 
+	// Established
 	case TCP_ESTABLISHED:
 		if header.Flags&TCP_ACK != 0 {
 			handleEstablishedACK(ts, entry, header)
@@ -39,6 +42,9 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		if len(payload) > 0 {
 			handleData(ts, entry, header, payload)
 		}
+
+	// Tear down
+	case TCP_FIN_WAIT_1:
 		if header.Flags&TCP_FIN != 0 {
 			handleFIN(ts, entry, header)
 		}
@@ -47,6 +53,7 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 	return nil
 }
 
+// Handshake functions
 func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr netip.Addr) {
 	// Create new connection in SYN_RECEIVED state
 	newSocket := &NormalSocket{
@@ -108,7 +115,6 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		listenSocket.acceptQueue <- newSocket
 	}
 }
-
 func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket := entry.SocketStruct.(*NormalSocket)
 	
@@ -140,24 +146,47 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	packet := serializeTCPPacket(ackHeader, nil)
 	ts.sendPacket(entry.RemoteAddress, packet)
 }
+func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
+	socket := entry.SocketStruct.(*NormalSocket)
 
+	entry.State = TCP_ESTABLISHED
+	socket.SeqNum++
+	socket.AckNum = header.SeqNum + 1
+
+	// If this is from a listening socket's child, add to accept queue
+	parentEntry, err := ts.VFindTableEntry(entry.LocalAddress, entry.LocalPort, netip.Addr{}, 0)
+	if err == nil && parentEntry.State == TCP_LISTEN {
+		listenSocket := parentEntry.SocketStruct.(*ListenSocket)
+		listenSocket.acceptQueue <- socket
+	}
+
+	fmt.Printf("Connection established with %s:%d\n", entry.RemoteAddress, entry.RemotePort)
+}
+
+// Established functions
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
 	
-	// Check if the sequence number is what we expect
+	// Check if sequence number matches what we expect
 	if header.SeqNum == socket.rcv.NXT {
-		// Write the data to our receive buffer
+		// Write the data to receive buffer
 		n, err := socket.rcv.buf.Write(payload)
 		if err != nil {
 			fmt.Printf("Error writing to receive buffer: %v\n", err)
 			return
 		}
 
-		// Update our next expected sequence number
+		// Update next expected sequence number
 		socket.rcv.NXT += uint32(n)
 		
 		// Update receive window
 		socket.rcv.WND = uint16(socket.rcv.buf.Free())
+
+		// Signal that data is ready to be read
+		select {
+		case socket.rcv.dataReady <- struct{}{}:
+		default:
+		}
 
 		// Send ACK
 		ackHeader := &TCPHeader{
@@ -173,67 +202,29 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 		packet := serializeTCPPacket(ackHeader, nil)
 		ts.sendPacket(entry.RemoteAddress, packet)
 	} else {
-		// If we received out-of-order data, just send an ACK with the sequence 
-		// number we're expecting. For now, we'll drop out-of-order segments
-		ackHeader := &TCPHeader{
-			SourcePort: entry.LocalPort,
-			DestPort:   entry.RemotePort,
-			SeqNum:     socket.snd.NXT,
-			AckNum:     socket.rcv.NXT, // What we're expecting
-			DataOffset: 5,
-			Flags:      TCP_ACK,
-			WindowSize: socket.rcv.WND,
-		}
-
-		packet := serializeTCPPacket(ackHeader, nil)
-		ts.sendPacket(entry.RemoteAddress, packet)
+		// TODO: Handle out of order data
+		fmt.Println("Out of order data")
 	}
-}
-
-func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
-	// TODO: Handle connection termination
 }
 
 func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
-    // Check if new ACK
 	if header.AckNum > socket.snd.UNA {
-		bytesAcked := header.AckNum - socket.snd.UNA
-		
 		socket.snd.UNA = header.AckNum
-		
-		buffer := make([]byte, bytesAcked)
-		_, err := socket.snd.buf.Read(buffer)
-		if err != nil {
-			fmt.Printf("Error reading from send buffer: %v\n", err)
-			return
-		}
-		
 		socket.snd.WND = header.WindowSize
-		
-        // Send more data
-		if socket.snd.buf.Length() > 0 {
-			// TODO: Implement sending of buffered data
-            // Will add when sending files and such
+
+		select {
+		case socket.snd.writeReady <- struct{}{}:
+		default:
 		}
+
+		socket.trySendData()
 	}
 }
 
-func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
-	socket := entry.SocketStruct.(*NormalSocket)
 
-	// Handle only the third packet of the three-way handshake
-	entry.State = TCP_ESTABLISHED
-	socket.SeqNum++
-	socket.AckNum = header.SeqNum + 1
-
-	// If this is from a listening socket's child, add to accept queue
-	parentEntry, err := ts.VFindTableEntry(entry.LocalAddress, entry.LocalPort, netip.Addr{}, 0)
-	if err == nil && parentEntry.State == TCP_LISTEN {
-		listenSocket := parentEntry.SocketStruct.(*ListenSocket)
-		listenSocket.acceptQueue <- socket
-	}
-
-	fmt.Printf("Connection established with %s:%d\n", entry.RemoteAddress, entry.RemotePort)
+// Tear down functions
+func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
+	// TODO: Handle connection termination
 }

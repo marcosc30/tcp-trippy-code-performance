@@ -1,10 +1,8 @@
 package tcpstack
 
 import (
-	"errors"
+	"fmt"
 	"net/netip"
-	"time"
-
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -34,7 +32,7 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 	ns.tcpStack = tcpStack
 	ns.RemoteAddress = remoteAddress
 	ns.RemotePort = remotePort
-	ns.LocalPort = tcpStack.allocateEphemeralPort()
+	ns.LocalPort = tcpStack.allocatePort()
 	ns.SeqNum = generateInitialSeqNum()
 
 	// Initialize send/receive state
@@ -84,87 +82,57 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
+	fmt.Println("VWrite")
 	// Write data to send buffer
-	n, err := socket.snd.buf.Write(data)
+	_, err := socket.snd.buf.Write(data)
 	if err != nil {
 		return err
 	}
 
-	// Max data to send (minimum of receiver's window and data available)
-	availableData := socket.snd.buf.Length()
-	maxSendSize := min(int(socket.rcv.WND), availableData)
+	// Try to send immediately
+	return socket.trySendData()
+}
 
-	// If we can send data, create and send TCP segments
+func (socket *NormalSocket) trySendData() error {
+	availableData := socket.snd.buf.Length()
+	if availableData == 0 {
+		return nil
+	}
+
+	maxSendSize := min(int(socket.snd.WND), availableData)
+	
 	if maxSendSize > 0 {
-		// Read from send buffer
 		sendData := make([]byte, maxSendSize)
-		n, err = socket.snd.buf.Read(sendData)
+		n, err := socket.snd.buf.Read(sendData)
 		if err != nil {
 			return err
 		}
 
-		// Create TCP header
 		header := &TCPHeader{
 			SourcePort: socket.LocalPort,
 			DestPort:   socket.RemotePort,
 			SeqNum:     socket.snd.NXT,
 			AckNum:     socket.rcv.NXT,
 			DataOffset: 5,
-			Flags:      TCP_ACK | TCP_PSH, // PSH flag to deliver data immediately
-			WindowSize: socket.rcv.WND,
+			Flags:      TCP_ACK,
+			WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
 		}
 
+		// Send data packet
 		packet := serializeTCPPacket(header, sendData[:n])
 		err = socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 		if err != nil {
 			return err
 		}
 
+		// Update send buffer sequence number
 		socket.snd.NXT += uint32(n)
-	} else if maxSendSize == 0 {
-		// Here, we implement 0 window probing
-
-		// We start a timer to decide on when to timeout
-		timeout := 5 * time.Second
-		timer := time.NewTimer(timeout)
-
-		for {
-			select {
-			// This may be better to implement with the writeReady channel, also check that the window being checked is the right one
-			case <-timer.C:
-				// Timeout
-				timer.Stop()
-				return errors.New("Timeout, no response from receiver")
-			default:
-				if socket.snd.WND > 0 {
-					// Receiver window is now open
-					return socket.VWrite(data)
-				}
-
-				// Send an empty packet with ACK flag
-				header := &TCPHeader{
-					SourcePort: socket.LocalPort,
-					DestPort:   socket.RemotePort,
-					SeqNum:     socket.snd.NXT,
-					AckNum:     socket.rcv.NXT,
-					DataOffset: 1,
-					Flags:      TCP_ACK,
-					WindowSize: socket.rcv.WND,
-				}
-
-				packet := serializeTCPPacket(header, nil)
-				err = socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-				if err != nil {
-					return err
-				}
-			}	
-		}
 	}
 
 	return nil
 }
 
-// Helper function for uint16 min
+// Why is there no min already...
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -173,28 +141,28 @@ func min(a, b int) int {
 }
 
 func (socket *NormalSocket) VRead(data []byte) (int, error) {
-	// Wait for data to be available
+	// Read data from receive buffer
 	n, err := socket.rcv.buf.Read(data)
 	if err != nil {
 		return 0, err
 	}
 
-	socket.rcv.WND = uint16(socket.rcv.buf.Free())
+	// Optional, send window update
+	// TODO (ask in milestone meeting): Should we send a window update?
+	// I like this, but not implemented in reference
 
-	if socket.rcv.WND >= BUFFER_SIZE/2 {
-		header := &TCPHeader{
-			SourcePort: socket.LocalPort,
-			DestPort:   socket.RemotePort,
-			SeqNum:     socket.snd.NXT,
-			AckNum:     socket.rcv.NXT,
-			DataOffset: 5,
-			Flags:      TCP_ACK,
-			WindowSize: socket.rcv.WND,
-		}
+	// header := &TCPHeader{
+	// 	SourcePort: socket.LocalPort,
+	// 	DestPort:   socket.RemotePort,
+	// 	SeqNum:     socket.snd.NXT,
+	// 	AckNum:     socket.rcv.NXT,
+	// 	DataOffset: 5,
+	// 	Flags:      TCP_ACK,
+	// 	WindowSize: uint16(socket.rcv.buf.Free()), // Current receive window
+	// }
 
-		packet := serializeTCPPacket(header, nil)
-		socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-	}
+	// packet := serializeTCPPacket(header, nil)
+	// socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 
 	return n, nil
 }
