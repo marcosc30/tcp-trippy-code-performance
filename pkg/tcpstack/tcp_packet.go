@@ -61,7 +61,7 @@ func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
 	packet[13] = header.Flags
 
 	binary.BigEndian.PutUint16(packet[14:16], header.WindowSize)
-	binary.BigEndian.PutUint16(packet[16:18], 0) // Checksum (computed later)
+	binary.BigEndian.PutUint16(packet[16:18], 0) // Checksum 
 	binary.BigEndian.PutUint16(packet[18:20], header.UrgentPtr)
 
 	// Add payload if any
@@ -70,6 +70,11 @@ func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
 	}
 
 	return packet
+}
+
+func computeChecksum(packet []byte) uint16 {
+	// TODO: Implement checksum computation
+	// Might have to change serializeTCPPacket to include IP pseudo header
 }
 
 func generateInitialSeqNum() uint32 {
