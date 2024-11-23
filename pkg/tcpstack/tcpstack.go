@@ -16,22 +16,23 @@ type TCPStack struct {
 	tcpTable []TCPTableEntry
 	mutex    sync.Mutex
 	ipStack  *ipstack.IPStack
-	rcv      RCV
-	snd      SND
+	// rcv      RCV
+	// snd      SND
+	// snd and rcv should be on the level of socket connection, not the stack which is a per host/client level
 	nextPort uint16 // For ephemeral port allocation
 	nextSID  int
 }
 
 type SND struct {
-	buf *ringbuffer.RingBuffer
-	UNA uint32 // oldest unacknowledged sequence number
-	NXT uint32 // next sequence number to be sent
-	WND uint16 // peer's advertised window size
-	ISS uint32 // initial send sequence number
+	buf           *ringbuffer.RingBuffer
+	UNA           uint32        // oldest unacknowledged sequence number
+	NXT           uint32        // next sequence number to be sent
+	WND           uint16        // peer's advertised window size
+	ISS           uint32        // initial send sequence number
 	calculatedRTO time.Duration // RTO for that connection, calculated based on RTT
-	RTOtimer *time.Timer // Timer for RTO
-	SRTT time.Duration // Smoothed RTT
-	RTTVAR time.Duration // RTT variance
+	RTOtimer      *time.Timer   // Timer for RTO
+	SRTT          time.Duration // Smoothed RTT
+	RTTVAR        time.Duration // RTT variance
 
 	writeReady chan struct{} // signals when we can send more data
 	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
@@ -39,11 +40,11 @@ type SND struct {
 }
 
 type InFlightPacket struct {
-	data 		[]byte // This may be too much overhead to track the data of every in flight packet
-	SeqNum        uint32
-	Length        uint16
+	data            []byte // This may be too much overhead to track the data of every in flight packet
+	SeqNum          uint32
+	Length          uint16
 	Retransmissions int
-	timeSent 	time.Time
+	timeSent        time.Time
 	//CalculatedRTO time.Duration // This should be done per connection, not per packet
 }
 
@@ -91,25 +92,26 @@ func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
 		tcpTable: make([]TCPTableEntry, 0),
 		ipStack:  ipStack,
 		nextPort: 49152, // Start of ephemeral port range
-		rcv: RCV{
-			buf: ringbuffer.New(int(BUFFER_SIZE)),
-			NXT: 0,
-			IRS: 0,
-		},
-		snd: SND{
-			buf: ringbuffer.New(int(BUFFER_SIZE)),
-			UNA: 0,
-			NXT: 0,
-			WND: 0,
-			ISS: 0,
-		},
+		// rcv: RCV{
+		// 	buf: ringbuffer.New(int(BUFFER_SIZE)),
+		// 	NXT: 0,
+		// 	IRS: 0,
+		// },
+		// snd: SND{
+		// 	buf: ringbuffer.New(int(BUFFER_SIZE)),
+		// 	UNA: 0,
+		// 	NXT: 0,
+		// 	WND: 0,
+		// 	ISS: 0,
+		// },
 		nextSID: 0,
 	}
 
 	// This is not blocking, it is erroring on a read, we need to call it before any read or write calls
 	// Sending when buffer is full should also block
-	result.rcv.buf.SetBlocking(true)
-	result.snd.buf.SetBlocking(true)
+	// result.rcv.buf.SetBlocking(true)
+	// result.snd.buf.SetBlocking(true)
+	// No wonder this wasn't blocking, it was never used
 
 	return result
 }
@@ -185,4 +187,15 @@ func (ts *TCPStack) allocatePort() uint16 {
 		ts.nextPort = 49152
 	}
 	return port
+}
+
+func (ts *TCPStack) RunBackground() {
+	// There may be a better way of doing it, but for now we just need a function to handle all of the go routines that must run
+	// During any TCP connections, handling things in the background like retransmissions
+
+	for _, entry := range ts.tcpTable {
+		if entry.State == TCP_ESTABLISHED {
+			go entry.SocketStruct.(*NormalSocket).manageRetransmissions()
+		}
+	}
 }

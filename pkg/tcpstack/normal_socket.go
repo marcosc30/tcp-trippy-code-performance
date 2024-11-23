@@ -167,6 +167,21 @@ func (socket *NormalSocket) trySendData() error {
 	return nil
 }
 
+func (socket *NormalSocket) manageRetransmissions() {
+	// This function should be running on a separate goroutine, checks for RTO timer expiration and then retransmits packets
+	for {
+		select {
+		case <-socket.snd.RTOtimer.C:
+			// RTO timer expired
+			err := socket.retransmitPacket()
+			if err != nil {
+				// We should close the connection here
+				socket.VClose()
+			}
+		}
+	}
+}
+
 func (socket *NormalSocket) retransmitPacket() error {
 	// Should be called whenever RTO timer expires
 
@@ -178,8 +193,6 @@ func (socket *NormalSocket) retransmitPacket() error {
 
 			// Check if we have reached max retransmissions
 			if packet.Retransmissions > TCP_RETRIES {
-				// We should close the connection here
-				socket.VClose()
 				return fmt.Errorf("max retransmissions reached")
 			}
 
@@ -260,8 +273,10 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 		socket.snd.calculatedRTO = 60 * time.Second
 	}
 
-	// Reset the RTO timer
-	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+	// // Reset the RTO timer
+	// socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+	// I don't think this last bit is needed since we should reset it separately whenever we compute RTO in functions that do it
+	// But given that timers should reset on recalculation, it may be smart to reset it within this function
 
 }
 
