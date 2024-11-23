@@ -5,6 +5,8 @@ import (
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
 	"sync"
+	"time"
+
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -22,19 +24,34 @@ type TCPStack struct {
 
 type SND struct {
 	buf *ringbuffer.RingBuffer
-	UNA uint32  // oldest unacknowledged sequence number
-	NXT uint32  // next sequence number to be sent
-	WND uint16  // peer's advertised window size
-	ISS uint32  // initial send sequence number
+	UNA uint32 // oldest unacknowledged sequence number
+	NXT uint32 // next sequence number to be sent
+	WND uint16 // peer's advertised window size
+	ISS uint32 // initial send sequence number
+	calculatedRTO time.Duration // RTO for that connection, calculated based on RTT
+	RTOtimer *time.Timer // Timer for RTO
+	SRTT time.Duration // Smoothed RTT
+	RTTVAR time.Duration // RTT variance
 
 	writeReady chan struct{} // signals when we can send more data
+	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
+	inFlightPackets []InFlightPacket
+}
+
+type InFlightPacket struct {
+	data 		[]byte // This may be too much overhead to track the data of every in flight packet
+	SeqNum        uint32
+	Length        uint16
+	Retransmissions int
+	timeSent 	time.Time
+	//CalculatedRTO time.Duration // This should be done per connection, not per packet
 }
 
 type RCV struct {
 	buf *ringbuffer.RingBuffer
 	WND uint16
-	NXT uint32  // next expected sequence number
-	IRS uint32  // initial receive sequence number
+	NXT uint32 // next expected sequence number
+	IRS uint32 // initial receive sequence number
 
 	dataReady chan struct{} // signals when data is available to read
 }
@@ -89,6 +106,8 @@ func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
 		nextSID: 0,
 	}
 
+	// This is not blocking, it is erroring on a read, we need to call it before any read or write calls
+	// Sending when buffer is full should also block
 	result.rcv.buf.SetBlocking(true)
 	result.snd.buf.SetBlocking(true)
 
@@ -133,7 +152,7 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 	// First, check if full 4-tuple match
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i] 
+		e := &ts.tcpTable[i]
 		if e.LocalPort == localPort &&
 			e.RemoteAddress == remoteAddress && e.RemotePort == remotePort {
 			return e, nil
@@ -142,7 +161,7 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 	// Second, check for listening socket
 	for i := range ts.tcpTable {
-		e := &ts.tcpTable[i] 
+		e := &ts.tcpTable[i]
 		if e.LocalPort == localPort &&
 			e.State == TCP_LISTEN {
 			return e, nil

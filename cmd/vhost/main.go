@@ -67,6 +67,11 @@ func combinedREPL(tcpstack *tcpstack.TCPStack, ipstack *ipstack.IPStack) {
 				continue OuterLoop
 			}
 
+			if args[0] == "iphelp" {
+				ipstack.ReplInput(scanner)
+				continue OuterLoop
+			}
+
 			for _, command := range tcp_args {
 				if args[0] == command {
 					// Execute TCP command
