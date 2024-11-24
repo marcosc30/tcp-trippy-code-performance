@@ -35,8 +35,8 @@ func main() {
 		go ipstack.InterfaceListen(iface, ipStack)
 	}
 
-	// // Use TCP REPL instead of IP REPL
-	// tcpStack.Repl()
+	// Start TCP background manager
+	go tcpStack.RunBackground()
 
 	combinedREPL(tcpStack, ipStack)
 }
