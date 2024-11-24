@@ -3,7 +3,9 @@ package tcpstack
 import (
 	"fmt"
 	"net/netip"
-    "github.com/smallnest/ringbuffer"
+	"time"
+
+	"github.com/smallnest/ringbuffer"
 )
 
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
@@ -207,8 +209,23 @@ func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader)
 	socket := entry.SocketStruct.(*NormalSocket)
 
 	if header.AckNum > socket.snd.UNA {
+		// Now, we recompute the RTO
+		socket.computeRTO(header.AckNum, time.Now())
+		socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+
 		socket.snd.UNA = header.AckNum
 		socket.snd.WND = header.WindowSize
+
+		socket.lastActive = time.Now()
+
+		
+
+		// Remove it from the inflight packets, no need since retransmission already checks for this
+		// for i, packet := range socket.snd.inFlightPackets {
+		// 	if packet.SeqNum+uint32(packet.Length) <= header.AckNum {
+		// 		socket.snd.inFlightPackets = append(socket.snd.inFlightPackets[:i], socket.snd.inFlightPackets[i+1:]...)
+		// 	}
+		// }
 
 		socket.trySendData()
 	}

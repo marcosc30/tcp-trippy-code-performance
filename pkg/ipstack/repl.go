@@ -215,6 +215,15 @@ func (s *IPStack) ReplInput(scanner *bufio.Scanner) {
 	case "exit":
 		// Quit process
 		os.Exit(0)
+	case "iphelp":
+		fmt.Println("IP commands:")
+		fmt.Println("li: List interfaces")
+		fmt.Println("ln: List neighbors")
+		fmt.Println("lr: List routes")
+		fmt.Println("down <ifname>: Disable an interface")
+		fmt.Println("up <ifname>: Enable an interface")
+		fmt.Println("send <addr> <message ...>: Send a test packet")
+		fmt.Println("exit: Quit process")
 	default:
 		fmt.Println("Unknown command")
 	}
