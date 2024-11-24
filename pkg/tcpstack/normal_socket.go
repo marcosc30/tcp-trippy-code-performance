@@ -34,6 +34,7 @@ func (ns *NormalSocket) VClose() error {
 }
 
 func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, remotePort uint16) error {
+	ns.SID = tcpStack.generateSID()
 	ns.tcpStack = tcpStack
 	ns.RemoteAddress = remoteAddress
 	ns.RemotePort = remotePort

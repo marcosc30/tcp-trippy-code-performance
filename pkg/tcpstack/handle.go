@@ -173,6 +173,8 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 	if header.SeqNum == socket.rcv.NXT {
 		// Write the data to receive buffer
 		n, err := socket.rcv.buf.Write(payload)
+		// If bigger than the buffer, recieve enough to fill, then send back
+		// ack for bytes written, allows sender to zero window probe
 		if err != nil {
 			fmt.Printf("Error writing to receive buffer: %v\n", err)
 			return
@@ -183,12 +185,6 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 		
 		// Update receive window
 		socket.rcv.WND = uint16(socket.rcv.buf.Free())
-
-		// Signal that data is ready to be read
-		select {
-		case socket.rcv.dataReady <- struct{}{}:
-		default:
-		}
 
 		// Send ACK
 		ackHeader := &TCPHeader{
@@ -219,11 +215,6 @@ func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader)
 
 		socket.snd.UNA = header.AckNum
 		socket.snd.WND = header.WindowSize
-
-		select {
-		case socket.snd.writeReady <- struct{}{}:
-		default:
-		}
 
 		socket.lastActive = time.Now()
 
