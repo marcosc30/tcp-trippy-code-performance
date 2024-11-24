@@ -35,9 +35,6 @@ func main() {
 		go ipstack.InterfaceListen(iface, ipStack)
 	}
 
-	// Start TCP background manager
-	go tcpStack.RunBackground()
-
 	combinedREPL(tcpStack, ipStack)
 }
 
@@ -46,7 +43,7 @@ func combinedREPL(tcpstack *tcpstack.TCPStack, ipstack *ipstack.IPStack) {
 	scanner := bufio.NewScanner(os.Stdin)
 	// fmt.Println("REPL started. Type 'help' for TCP command instructions, and iphelp for IP command instructions.")
 
-	tcp_args := []string{"a", "c", "ls", "s", "sf", "rf", "r"}
+	tcp_args := []string{"a", "c", "ls", "s", "sf", "rf", "r", "rtrinfo"}
 	ip_args := []string{"down", "up", "send", "li", "lr", "ln", "exit"}
 
 	OuterLoop: 

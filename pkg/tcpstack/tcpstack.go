@@ -33,19 +33,24 @@ type SND struct {
 	RTOtimer      *time.Timer   // Timer for RTO
 	SRTT          time.Duration // Smoothed RTT
 	RTTVAR        time.Duration // RTT variance
+	retransmissions int
 
 	writeReady chan struct{} // signals when we can send more data
 	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
-	inFlightPackets []InFlightPacket
+	inFlightPackets InFlightPacketStack
 }
 
 type InFlightPacket struct {
 	data            []byte // This may be too much overhead to track the data of every in flight packet
 	SeqNum          uint32
 	Length          uint16
-	Retransmissions int
 	timeSent        time.Time
 	//CalculatedRTO time.Duration // This should be done per connection, not per packet
+}
+
+type InFlightPacketStack struct {
+	packets []InFlightPacket
+	mutex  sync.Mutex
 }
 
 type RCV struct {
@@ -135,6 +140,11 @@ func (ts *TCPStack) VInsertTableEntry(entry TCPTableEntry) {
 	ts.mutex.Lock()
 	defer ts.mutex.Unlock()
 	ts.tcpTable = append(ts.tcpTable, entry)
+	switch entry.SocketStruct.(type) {
+	case *NormalSocket:
+		go entry.SocketStruct.(*NormalSocket).manageRetransmissions()
+	}
+
 }
 
 func (ts *TCPStack) VDeleteTableEntry(entry TCPTableEntry) {
@@ -189,13 +199,3 @@ func (ts *TCPStack) allocatePort() uint16 {
 	return port
 }
 
-func (ts *TCPStack) RunBackground() {
-	// There may be a better way of doing it, but for now we just need a function to handle all of the go routines that must run
-	// During any TCP connections, handling things in the background like retransmissions
-
-	for _, entry := range ts.tcpTable {
-		if entry.State == TCP_ESTABLISHED {
-			go entry.SocketStruct.(*NormalSocket).manageRetransmissions()
-		}
-	}
-}

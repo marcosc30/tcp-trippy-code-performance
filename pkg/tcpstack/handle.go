@@ -16,6 +16,8 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		return err
 	}
 
+	//fmt.Println("Handling packet for", entry.LocalAddress, entry.LocalPort, entry.RemoteAddress, entry.RemotePort, entry.State)
+
 	switch entry.State {
 
 	// Handshake
@@ -76,7 +78,13 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		UNA: newSocket.SeqNum,
 		NXT: newSocket.SeqNum + 1,  // +1 for SYN
 		WND: BUFFER_SIZE,
+		RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
+		calculatedRTO: 1 * time.Second,
+		SRTT:          0,
+		RTTVAR:        0,
+		retransmissions: 0,
 	}
+	newSocket.snd.RTOtimer.Stop()
 	
 	newSocket.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
@@ -208,26 +216,37 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
+	// We need to address the case that this is an ACK with data in it that we're receiving, we don't want to reset our UNA as a sender in this case
+
+	// Check if this is an ACK for a packet we sent
 	if header.AckNum > socket.snd.UNA {
+
 		// Now, we recompute the RTO
 		socket.computeRTO(header.AckNum, time.Now())
 		socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+		socket.snd.retransmissions = 0
 
 		socket.snd.UNA = header.AckNum
 		socket.snd.WND = header.WindowSize
 
 		socket.lastActive = time.Now()
 
-		
+		// Remove it from the inflight packets
+		socket.snd.inFlightPackets.mutex.Lock()
+		for i, packet := range socket.snd.inFlightPackets.packets {
+			if packet.SeqNum+uint32(packet.Length) <= header.AckNum {
+				socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets[:i], socket.snd.inFlightPackets.packets[i+1:]...)
+			}
+		}
+		socket.snd.inFlightPackets.mutex.Unlock()
 
-		// Remove it from the inflight packets, no need since retransmission already checks for this
-		// for i, packet := range socket.snd.inFlightPackets {
-		// 	if packet.SeqNum+uint32(packet.Length) <= header.AckNum {
-		// 		socket.snd.inFlightPackets = append(socket.snd.inFlightPackets[:i], socket.snd.inFlightPackets[i+1:]...)
-		// 	}
-		// }
+		//socket.trySendData() why are we trying to send data here?
 
-		socket.trySendData()
+	}
+
+	// If this is the last ACK for data sent, we should stop the timer
+	if header.AckNum == socket.snd.NXT {
+		socket.snd.RTOtimer.Stop()
 	}
 }
 

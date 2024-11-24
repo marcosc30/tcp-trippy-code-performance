@@ -49,11 +49,14 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 		UNA:           ns.SeqNum,
 		NXT:           ns.SeqNum + 1, // +1 for SYN
 		WND:           BUFFER_SIZE,
-		RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
+		//RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
 		calculatedRTO: 1 * time.Second,
 		SRTT:          0,
 		RTTVAR:        0,
+		retransmissions: 0,
 	}
+	ns.snd.RTOtimer = time.NewTimer(ns.snd.calculatedRTO)
+	ns.snd.RTOtimer.Stop()
 
 	ns.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
@@ -94,6 +97,10 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 
 func (socket *NormalSocket) VWrite(data []byte) error {
 	fmt.Println("VWrite")
+
+	// Start the RTO timer
+	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+
 	// Write data to send buffer
 	_, err := socket.snd.buf.Write(data)
 	if err != nil {
@@ -110,14 +117,15 @@ func (socket *NormalSocket) trySendData() error {
 	// Changed this to a for loop to send larger packets, may need to revise this
 	for {
 		availableData := socket.snd.buf.Length()
-		if availableData == 0 {
+		//fmt.Println("In flight packets: ", len(socket.snd.inFlightPackets))
+		if availableData == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
+			// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
+			// Which is not good and will lead to a lot of retransmissions
+
 			return nil
 		}
 		maxSendSize := min(int(socket.snd.WND), availableData)
 		// We should also add a maximum packet size restriction on this
-		if availableData == 0 { // and make sure there are no inflight packets
-			break
-		}
 
 		if maxSendSize > 0 {
 			sendData := make([]byte, maxSendSize)
@@ -146,15 +154,18 @@ func (socket *NormalSocket) trySendData() error {
 			}
 
 			// Add it to the inflight packets
-			socket.snd.inFlightPackets = append(socket.snd.inFlightPackets, InFlightPacket{
+			socket.snd.inFlightPackets.mutex.Lock()
+			socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
 				data:     sendData[:n],
 				SeqNum:   socket.snd.NXT,
 				Length:   uint16(n),
 				timeSent: time.Now(),
 			})
+			socket.snd.inFlightPackets.mutex.Unlock()
 
 			// Update send buffer sequence number
 			socket.snd.NXT += uint32(n)
+
 		} else if maxSendSize == 0 {
 			// Here, we implement zero window probing
 			// We send a probe packet to check if the window is still zero
@@ -164,19 +175,21 @@ func (socket *NormalSocket) trySendData() error {
 			// We don't add them to inflight because we don't want it to be retransmitted
 		}
 	}
-
-	return nil
 }
 
 func (socket *NormalSocket) manageRetransmissions() {
 	// This function should be running on a separate goroutine, checks for RTO timer expiration and then retransmits packets
+	fmt.Println("Starting retransmission manager")
 	for {
 		select {
 		case <-socket.snd.RTOtimer.C:
+			fmt.Println("Retransmitting packet")
+
 			// RTO timer expired
 			err := socket.retransmitPacket()
 			if err != nil {
 				// We should close the connection here
+				fmt.Println("Error retransmitting packet: ", err)
 				socket.VClose()
 			}
 		}
@@ -186,14 +199,16 @@ func (socket *NormalSocket) manageRetransmissions() {
 func (socket *NormalSocket) retransmitPacket() error {
 	// Should be called whenever RTO timer expires
 
-	inflightpackets := socket.snd.inFlightPackets
+	socket.snd.inFlightPackets.mutex.Lock()
+	defer socket.snd.inFlightPackets.mutex.Unlock()
+	inflightpackets := socket.snd.inFlightPackets.packets
 
-	for i, packet := range inflightpackets {
+	for _, packet := range inflightpackets {
 		if packet.SeqNum >= socket.snd.UNA {
 			// This is the first unacked segment
 
 			// Check if we have reached max retransmissions
-			if packet.Retransmissions > TCP_RETRIES {
+			if socket.snd.retransmissions > TCP_RETRIES {
 				return fmt.Errorf("max retransmissions reached")
 			}
 
@@ -215,13 +230,17 @@ func (socket *NormalSocket) retransmitPacket() error {
 			}
 
 			// Increment retransmissions
-			packet.Retransmissions++
+			socket.snd.retransmissions++
 
 			// Double the RTO timer
 			socket.snd.calculatedRTO *= 2
+			// Enforce maximum RTO
+			if socket.snd.calculatedRTO > 60*time.Second {
+				socket.snd.calculatedRTO = 60 * time.Second
+			}
 			socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
 
-			socket.snd.inFlightPackets = inflightpackets[i+1:]
+			//socket.snd.inFlightPackets.packets = inflightpackets[i:]
 
 			break
 
@@ -243,7 +262,9 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 	var rtt time.Duration
 
 	// First we find the packet in the inflight packets using the ackNum, it shouldn't have been removed from in flights if it still hasn't been acked
-	for _, packet := range socket.snd.inFlightPackets {
+	socket.snd.inFlightPackets.mutex.Lock()
+	defer socket.snd.inFlightPackets.mutex.Unlock()
+	for _, packet := range socket.snd.inFlightPackets.packets {
 		if packet.SeqNum == ackNum {
 			// Calculate the RTT
 			rtt = timeReceived.Sub(packet.timeSent)
@@ -260,8 +281,8 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 		// Update RTTVAR and SRTT according to RFC 6298
 		alpha := 0.125
 		beta := 0.25
-		socket.snd.RTTVAR = time.Duration(float64(socket.snd.RTTVAR.Nanoseconds())*(1-beta) + float64(abs(int64(socket.snd.SRTT-rtt)))*beta) * time.Nanosecond
-		socket.snd.SRTT = time.Duration((1-alpha)*float64(socket.snd.SRTT.Nanoseconds()) + alpha*float64(rtt.Nanoseconds())) * time.Nanosecond
+		socket.snd.RTTVAR = time.Duration(float64(socket.snd.RTTVAR.Nanoseconds())*(1-beta)+float64(abs(int64(socket.snd.SRTT-rtt)))*beta) * time.Nanosecond
+		socket.snd.SRTT = time.Duration((1-alpha)*float64(socket.snd.SRTT.Nanoseconds())+alpha*float64(rtt.Nanoseconds())) * time.Nanosecond
 	}
 
 	// Calculate RTO
