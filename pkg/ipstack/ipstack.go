@@ -64,6 +64,10 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 
 	// 2. For me? Check all interfaces
 	for _, iface := range ipstack.Interfaces {
+		if iface.Down {
+			continue
+		}
+
 		if iface.IPAddr == packet.DestinationIP {
 			// slog.Info("Packet is for me")
 			ipstack.HandlePacket(packet)
