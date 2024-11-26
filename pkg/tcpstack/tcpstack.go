@@ -6,11 +6,12 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-
+	"fmt"
 	"github.com/smallnest/ringbuffer"
 )
 
 const BUFFER_SIZE uint16 = 65535
+// const BUFFER_SIZE uint16 = 
 
 type TCPStack struct {
 	tcpTable []TCPTableEntry
@@ -35,7 +36,6 @@ type SND struct {
 	RTTVAR        time.Duration // RTT variance
 	retransmissions int
 
-	writeReady chan struct{} // signals when we can send more data
 	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
 	inFlightPackets InFlightPacketStack
 }
@@ -59,7 +59,13 @@ type RCV struct {
 	NXT uint32 // next expected sequence number
 	IRS uint32 // initial receive sequence number
 
-	dataReady chan struct{} // signals when data is available to read
+	earlyData []EarlyData
+}
+
+type EarlyData struct {
+	data []byte
+	SeqNum uint32
+	Length uint16
 }
 
 type TCPTableEntry struct {
@@ -93,6 +99,8 @@ const (
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
+	fmt.Println("BUFFER_SIZE: ", BUFFER_SIZE)
+
 	result := &TCPStack{
 		tcpTable: make([]TCPTableEntry, 0),
 		ipStack:  ipStack,
