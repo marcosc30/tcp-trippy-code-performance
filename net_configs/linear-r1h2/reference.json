@@ -1,0 +1,11 @@
+{
+ "h1": {
+  "binary_path": "./reference/arm64/vhost"
+ },
+ "h2": {
+  "binary_path": "./reference/arm64/vhost"
+ },
+ "r1": {
+  "binary_path": "./reference/arm64/vrouter"
+ }
+}

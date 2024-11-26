@@ -8,7 +8,6 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-
 type NormalSocket struct {
 	SID           int
 	LocalAddress  netip.Addr
@@ -21,12 +20,9 @@ type NormalSocket struct {
 	snd           SND
 	rcv           RCV
 	lastActive    time.Time
-	zeroWindowProbing bool
-	probeInterval    time.Duration
-	probeTimer       *time.Timer
 }
 
-const TCP_RETRIES = 3
+const ZWP_RETRIES = 3
 const ZWP_PROBE_INTERVAL = 1 * time.Second
 
 func (ns *NormalSocket) GetSID() int {
@@ -177,50 +173,113 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 }
 
 func (socket *NormalSocket) trySendData() error {
-	if socket.snd.WND == 0 {
-		if !socket.zeroWindowProbing {
-			socket.zeroWindowProbing = true
-			socket.probeInterval = ZWP_PROBE_INTERVAL
-			socket.startProbing()
-		}
+	// Check if there's data to send
+	bufferSpace := socket.snd.buf.Length()
+	if bufferSpace == 0 {
 		return nil
 	}
-	
-	// Reset probing state if window opened
-	if socket.zeroWindowProbing {
-		socket.zeroWindowProbing = false
-		socket.probeTimer.Stop()
+
+	// If window is zero, send a probe and return
+	if socket.snd.WND == 0 {
+		return socket.sendZeroWindowProbe()
 	}
-	
-	// ... rest of existing send logic ...
+
+	// Keep sending packets while we have data and window space
+	for socket.snd.buf.Length() > 0 {
+		// Calculate available window
+		dataInFlight := socket.snd.NXT - socket.snd.UNA
+		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
+
+		// If no free window space, return (will be called again when ACK received)
+		if freeWindowSpace <= 0 {
+			return nil
+		}
+
+		// Calculate how much we can send
+		maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
+		sendData := make([]byte, maxSendSize)
+		
+		n, err := socket.snd.buf.Read(sendData)
+		if err != nil {
+			return err
+		}
+
+		// Send the packet
+		err = socket.sendDataPacket(sendData[:n])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (socket *NormalSocket) startProbing() {
-	socket.probeTimer = time.NewTimer(socket.probeInterval)
-	go func() {
-		for socket.zeroWindowProbing {
-			<-socket.probeTimer.C
-			
-			// Send 1-byte probe
-			header := &TCPHeader{
-				SourcePort: socket.LocalPort,
-				DestPort:   socket.RemotePort,
-				SeqNum:     socket.snd.NXT,
-				AckNum:     socket.rcv.NXT,
-				DataOffset: 5,
-				Flags:      TCP_ACK,
-				WindowSize: socket.rcv.WND,
-			}
-			
-			socket.tcpStack.sendPacket(socket.RemoteAddress, 
-				serializeTCPPacket(header, []byte{0}))
-			
-			// Exponential backoff
-			socket.probeInterval = min(socket.probeInterval * 2, 
-				60 * time.Second)
-			socket.probeTimer.Reset(socket.probeInterval)
+// New helper function for zero window probing
+func (socket *NormalSocket) sendZeroWindowProbe() error {
+	// Keep probing until either we get a non-zero window or hit retry limit
+	retries := 0
+	for socket.snd.WND == 0 && retries < ZWP_RETRIES {
+		header := &TCPHeader{
+			SourcePort: socket.LocalPort,
+			DestPort:   socket.RemotePort,
+			SeqNum:     socket.snd.NXT,
+			AckNum:     socket.rcv.NXT,
+			DataOffset: 5,
+			Flags:      TCP_ACK,
+			WindowSize: uint16(socket.rcv.buf.Free()),
 		}
-	}()
+
+		packet := serializeTCPPacket(header, []byte{0})
+		err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+		if err != nil {
+			return err
+		}
+
+		socket.snd.NXT += 1
+		retries++
+
+		// Wait for response before sending next probe
+		time.Sleep(ZWP_PROBE_INTERVAL)
+	}
+
+	if retries >= ZWP_RETRIES {
+		return fmt.Errorf("zero window probe max retries exceeded")
+	}
+
+	return nil
+}
+
+// New helper function for sending data packets
+func (socket *NormalSocket) sendDataPacket(data []byte) error {
+	header := &TCPHeader{
+		SourcePort: socket.LocalPort,
+		DestPort:   socket.RemotePort,
+		SeqNum:     socket.snd.NXT,
+		AckNum:     socket.rcv.NXT,
+		DataOffset: 5,
+		Flags:      TCP_ACK,
+		WindowSize: uint16(socket.rcv.buf.Free()),
+	}
+
+	packet := serializeTCPPacket(header, data)
+	err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+	if err != nil {
+		return err
+	}
+
+	// Track in-flight packet
+	socket.snd.inFlightPackets.mutex.Lock()
+	socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+		data:     data,
+		SeqNum:   socket.snd.NXT,
+		Length:   uint16(len(data)),
+		timeSent: time.Now(),
+		flags:    TCP_ACK,
+	})
+	socket.snd.inFlightPackets.mutex.Unlock()
+
+	socket.snd.NXT += uint32(len(data))
+	return nil
 }
 
 // Why is there no min already...
