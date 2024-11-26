@@ -136,6 +136,7 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		retransmissions: 0,
 	}
 	newSocket.snd.RTOtimer.Stop()
+	newSocket.snd.buf.SetBlocking(true)
 
 	newSocket.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
@@ -143,6 +144,7 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		NXT: header.SeqNum + 1,  // +1 for SYN
 		WND: BUFFER_SIZE,
 	}
+	newSocket.rcv.buf.SetBlocking(true)
 
 	// Get the listening socket to add to accept queue
 	listenSocket := entry.SocketStruct.(*ListenSocket)

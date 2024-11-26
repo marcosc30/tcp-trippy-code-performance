@@ -99,6 +99,7 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 		RTTVAR:          0,
 		retransmissions: 0,
 	}
+	ns.snd.buf.SetBlocking(true)
 	ns.snd.RTOtimer = time.NewTimer(ns.snd.calculatedRTO)
 	ns.snd.RTOtimer.Stop()
 
@@ -106,6 +107,7 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
 		WND: BUFFER_SIZE,
 	}
+	ns.rcv.buf.SetBlocking(true)
 
 	// Set local address to first interface address (for now)
 	for _, iface := range tcpStack.ipStack.Interfaces {
