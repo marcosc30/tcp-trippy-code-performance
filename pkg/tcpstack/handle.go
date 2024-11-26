@@ -329,8 +329,6 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 		WindowSize: socket.rcv.WND,
 	}
 
-	fmt.Println("Sending ACK for FIN")
-
 	packet := serializeTCPPacket(ackHeader, nil)
 	ts.sendPacket(entry.RemoteAddress, packet)
 

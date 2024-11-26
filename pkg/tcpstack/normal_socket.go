@@ -379,8 +379,8 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 	// Enforce minimum and maximum bounds
 	if socket.snd.calculatedRTO < time.Second {
 		socket.snd.calculatedRTO = time.Second
-	} else if socket.snd.calculatedRTO > 60*time.Second {
-		socket.snd.calculatedRTO = 60 * time.Second
+	} else if socket.snd.calculatedRTO > MSL {
+		socket.snd.calculatedRTO = MSL
 	}
 
 	// // Reset the RTO timer
