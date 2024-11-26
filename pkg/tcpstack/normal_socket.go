@@ -24,6 +24,8 @@ type NormalSocket struct {
 	lastActive    time.Time
 }
 
+const TCP_RETRIES = 3
+const ZWP_PROBE_INTERVAL = 1 * time.Second
 
 func (ns *NormalSocket) GetSID() int {
 	return ns.SID
@@ -31,6 +33,32 @@ func (ns *NormalSocket) GetSID() int {
 
 func (ns *NormalSocket) VClose() error {
 	// TODO: Clean up TCP connection state
+
+	// Send FIN packet
+	header := &TCPHeader{
+		SourcePort: ns.LocalPort,
+		DestPort:   ns.RemotePort,
+		SeqNum:     ns.SeqNum,
+		AckNum:     ns.rcv.NXT,
+		DataOffset: 5,
+		Flags:      TCP_FIN,
+		WindowSize: ns.rcv.WND,
+	}
+	
+	packet := serializeTCPPacket(header, nil)
+	err := ns.tcpStack.sendPacket(ns.RemoteAddress, packet)
+	if err != nil {
+		return err
+	}
+
+	// Update state to FIN_WAIT_1
+	table_entry, _ := ns.tcpStack.VFindTableEntry(ns.LocalAddress, ns.LocalPort, ns.RemoteAddress, ns.RemotePort)
+	if table_entry.State == TCP_ESTABLISHED {
+		table_entry.State = TCP_FIN_WAIT_1
+	} else if table_entry.State == TCP_CLOSE_WAIT {
+		table_entry.State = TCP_LAST_ACK
+	}
+
 	return nil
 }
 
@@ -45,15 +73,15 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 
 	// Initialize send/receive state
 	ns.snd = SND{
-		buf:           ringbuffer.New(int(BUFFER_SIZE)),
-		ISS:           ns.SeqNum,
-		UNA:           ns.SeqNum,
-		NXT:           ns.SeqNum + 1, // +1 for SYN
-		WND:           BUFFER_SIZE,
+		buf: ringbuffer.New(int(BUFFER_SIZE)),
+		ISS: ns.SeqNum,
+		UNA: ns.SeqNum,
+		NXT: ns.SeqNum + 1, // +1 for SYN
+		WND: BUFFER_SIZE,
 		//RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
-		calculatedRTO: 1 * time.Second,
-		SRTT:          0,
-		RTTVAR:        0,
+		calculatedRTO:   1 * time.Second,
+		SRTT:            0,
+		RTTVAR:          0,
 		retransmissions: 0,
 	}
 	ns.snd.RTOtimer = time.NewTimer(ns.snd.calculatedRTO)
@@ -99,11 +127,25 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 func (socket *NormalSocket) VWrite(data []byte) error {
 	fmt.Println("VWrite")
 
+	// Check if connection is in the right state
+	
+	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
+	if err != nil {	
+		fmt.Println("Error finding table entry: ", err)
+		return err
+	}
+
+	fmt.Println("Table entry state: ", table_entry.State)
+
+	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
+		return fmt.Errorf("connection not established")
+	}
+
 	// Start the RTO timer
 	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
 
 	// Write data to send buffer
-	_, err := socket.snd.buf.Write(data)
+	_, err = socket.snd.buf.Write(data)
 	if err != nil {
 		return err
 	}
@@ -186,16 +228,45 @@ func (socket *NormalSocket) trySendData() error {
 			// Here, we implement zero window probing
 			// We send a probe packet to check if the window is still zero
 
-			// We send one byte repeatedly
+				// We send one byte repeatedly
 
-			// We don't add them to inflight because we don't want it to be retransmitted
+				// We don't add them to inflight because we don't want it to be retransmitted
+
+				header := &TCPHeader{
+					SourcePort: socket.LocalPort,
+					DestPort:   socket.RemotePort,
+					SeqNum:     socket.snd.NXT,
+					AckNum:     socket.rcv.NXT,
+					DataOffset: 5,
+					Flags:      TCP_ACK,
+					WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+				}
+
+				// Send data packet
+				packet := serializeTCPPacket(header, []byte{0})
+				err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+				if err != nil {
+					return err
+				}
+
+				// Update send buffer sequence number
+				socket.snd.NXT += 1
+
+				if socket.snd.WND > 0 {
+					break
+				}
+
+				// We sleep so that we don't send too many probes
+				time.Sleep(ZWP_PROBE_INTERVAL)
+
+				// We don't need to add a timer since we have the RTO timer
+		}
 		}
 	}
 }
 
 func (socket *NormalSocket) manageRetransmissions() {
 	// This function should be running on a separate goroutine, checks for RTO timer expiration and then retransmits packets
-	fmt.Println("Starting retransmission manager")
 	for {
 		select {
 		case <-socket.snd.RTOtimer.C:
@@ -335,6 +406,12 @@ func abs(x int64) int64 {
 }
 
 func (socket *NormalSocket) VRead(data []byte) (int, error) {
+	// Check if connection is in the right state
+	table_entry, _ := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
+	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_FIN_WAIT_1 && table_entry.State != TCP_FIN_WAIT_2  {
+		return 0, fmt.Errorf("connection not established")
+	}
+
 	// Read data from receive buffer
 	n, err := socket.rcv.buf.Read(data)
 	if err != nil {
