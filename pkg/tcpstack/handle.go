@@ -126,8 +126,8 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		UNA:             newSocket.SeqNum,
 		NXT:             newSocket.SeqNum + 1, // +1 for SYN
 		WND:             header.WindowSize,
-		RTOtimer:        time.NewTimer(1 * time.Second), // This is the default value
-		calculatedRTO:   1 * time.Second,
+		RTOtimer:        time.NewTimer(MIN_RTO), // This is the default value
+		calculatedRTO:   MIN_RTO,
 		SRTT:            0,
 		RTTVAR:          0,
 		retransmissions: 0,
@@ -326,8 +326,8 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 		handleData(ts, entry, header, payload)
 	}
 	
-	// 2. Process ACK if present
-	if header.Flags&TCP_ACK != 0 {
+	// 2. Process ACK if present and there are in flight packets
+	if header.Flags&TCP_ACK != 0 && len(socket.snd.inFlightPackets.packets) > 0 {
 		// Ignore old ACKs
 		if header.AckNum <= socket.snd.UNA {
 			return

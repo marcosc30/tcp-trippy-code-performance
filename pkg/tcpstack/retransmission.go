@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const MIN_RTO = 30 * time.Second
+
 // Here, we will define our logic for retransmission of packets, including RTO calculations
 
 type InFlightPacket struct {
@@ -22,17 +24,20 @@ type InFlightPacketStack struct {
 	mutex   sync.Mutex
 }
 
+
+
 func (socket *NormalSocket) manageRetransmissions() {
-	// This function should be running on a separate goroutine, checks for RTO timer expiration and then retransmits packets
 	for {
 		select {
-		case <-socket.snd.RTOtimer.C:
-			fmt.Println("Retransmitting packet")
-
-			// RTO timer expired
+		case t, ok := <-socket.snd.RTOtimer.C:
+			if !ok {
+				// Timer was stopped
+				return
+			}
+			// Timer expired naturally
+			fmt.Println("Timer expired at:", t)
 			err := socket.retransmitPacket()
 			if err != nil {
-				// We should close the connection here
 				fmt.Println("Error retransmitting packet: ", err)
 				socket.VClose()
 			}
@@ -106,8 +111,6 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 	var rtt time.Duration
 
 	// First we find the packet in the inflight packets using the ackNum, it shouldn't have been removed from in flights if it still hasn't been acked
-	socket.snd.inFlightPackets.mutex.Lock()
-	defer socket.snd.inFlightPackets.mutex.Unlock()
 	for _, packet := range socket.snd.inFlightPackets.packets {
 		if packet.SeqNum == ackNum {
 			// Calculate the RTT
@@ -133,8 +136,8 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 	socket.snd.calculatedRTO = socket.snd.SRTT + 4*socket.snd.RTTVAR
 
 	// Enforce minimum and maximum bounds
-	if socket.snd.calculatedRTO < time.Second {
-		socket.snd.calculatedRTO = time.Second
+	if socket.snd.calculatedRTO < MIN_RTO {
+		socket.snd.calculatedRTO = MIN_RTO
 	} else if socket.snd.calculatedRTO > MSL {
 		socket.snd.calculatedRTO = MSL
 	}

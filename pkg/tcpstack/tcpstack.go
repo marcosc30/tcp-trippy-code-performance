@@ -10,9 +10,9 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-const BUFFER_SIZE uint16 = 65535
-// const BUFFER_SIZE uint16 = 3
-
+// const BUFFER_SIZE uint16 = 65535
+const BUFFER_SIZE uint16 = 3
+	
 const RTO_MAX_RETRIES = 3
 
 type TCPStack struct {

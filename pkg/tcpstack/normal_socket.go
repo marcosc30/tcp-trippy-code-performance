@@ -47,6 +47,7 @@ func (ns *NormalSocket) VClose() error {
 		WindowSize: ns.rcv.WND,
 	}
 
+	fmt.Print("vclose locking packets mutex")
 	ns.snd.inFlightPackets.mutex.Lock()
 	ns.snd.inFlightPackets.packets = append(ns.snd.inFlightPackets.packets, InFlightPacket{
 		data:     nil,
@@ -155,7 +156,8 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 		return fmt.Errorf("connection not established")
 	}
 
-	// Write data to send buffer
+	// Write data to send buffer, break into max size of space left in buffer and continue to send until all sent
+
 	_, err = socket.snd.buf.Write(data)
 	if err != nil {
 		return err
@@ -277,6 +279,7 @@ func (socket *NormalSocket) sendDataPacket(data []byte) error {
 		flags:    TCP_ACK,
 	})
 	socket.snd.inFlightPackets.mutex.Unlock()
+	fmt.Println("Added packet to in-flight queue")
 
 	socket.snd.NXT += uint32(len(data))
 	return nil
