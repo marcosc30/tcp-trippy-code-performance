@@ -2,7 +2,9 @@ package tcpstack
 
 import (
 	"fmt"
+	"io"
 	"net/netip"
+	"os"
 	"time"
 
 	"github.com/smallnest/ringbuffer"
@@ -192,6 +194,10 @@ func (socket *NormalSocket) trySendData() error {
 		dataInFlight := socket.snd.NXT - socket.snd.UNA
 		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
 
+		//fmt.Println("In flight packets: ", len(socket.snd.inFlightPackets))
+		// if bufferSpace == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
+		// 	// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
+		// 	// Which is not good and will lead to a lot of retransmissions
 		// If no free window space, return (will be called again when ACK received)
 		if freeWindowSpace <= 0 {
 			return nil
@@ -332,4 +338,69 @@ func (socket *NormalSocket) VRead(data []byte) (int, error) {
 	// socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 
 	return n, nil
+}
+
+func (socket *NormalSocket) VSendFile(filename string) error {
+	// Open file
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Read file into buffer
+	buffer := make([]byte, BUFFER_SIZE) // What if the file is larger than buffer size?
+	for {
+		_, err := file.Read(buffer)
+		if err != nil || err != io.EOF {
+			return err
+		}
+	
+
+		// Write buffer to socket
+		err2 := socket.VWrite(buffer)
+		if err2 != nil {
+			return err
+		}
+
+		
+		if err == io.EOF {
+			break
+		}
+	}
+
+	fmt.Println("File sent")
+
+	return nil
+}
+
+func (socket *NormalSocket) VReceiveFile(filename string) error {
+	// Open file
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	buffer := make([]byte, BUFFER_SIZE)
+	for {
+		n, err := socket.VRead(buffer)
+		if err != nil {
+			return err
+		}
+
+		_, err = file.Write(buffer[:n])
+		if err != nil {
+			return err
+		}
+
+		if n < int(BUFFER_SIZE) {
+			break
+		}
+	}
+
+	fmt.Println("File received")
+
+	return nil
 }
