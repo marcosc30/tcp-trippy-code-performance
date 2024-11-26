@@ -76,11 +76,11 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		if header.Flags&TCP_ACK != 0 {
 			handleClosingACK(ts, entry, header)
 		}
-		
+
 	case TCP_CLOSE_WAIT:
 		// if header.Flags&TCP_FIN != 0 {
 		// 	handleFIN(ts, entry, header)
-		// } 
+		// }
 		// Should do nothing here
 
 	case TCP_CLOSING:
@@ -124,15 +124,15 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 
 	// Initialize send/receive state
 	newSocket.snd = SND{
-		buf: ringbuffer.New(int(BUFFER_SIZE)),
-		ISS: newSocket.SeqNum,
-		UNA: newSocket.SeqNum,
-		NXT: newSocket.SeqNum + 1,  // +1 for SYN
-		WND: header.WindowSize,
-		RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
-		calculatedRTO: 1 * time.Second,
-		SRTT:          0,
-		RTTVAR:        0,
+		buf:             ringbuffer.New(int(BUFFER_SIZE)),
+		ISS:             newSocket.SeqNum,
+		UNA:             newSocket.SeqNum,
+		NXT:             newSocket.SeqNum + 1, // +1 for SYN
+		WND:             header.WindowSize,
+		RTOtimer:        time.NewTimer(1 * time.Second), // This is the default value
+		calculatedRTO:   1 * time.Second,
+		SRTT:            0,
+		RTTVAR:          0,
 		retransmissions: 0,
 	}
 	newSocket.snd.RTOtimer.Stop()
@@ -141,7 +141,7 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 	newSocket.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
 		IRS: header.SeqNum,
-		NXT: header.SeqNum + 1,  // +1 for SYN
+		NXT: header.SeqNum + 1, // +1 for SYN
 		WND: BUFFER_SIZE,
 	}
 	newSocket.rcv.buf.SetBlocking(true)
@@ -186,13 +186,13 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 
 	// Update receive state with peer's initial values
 	socket.rcv.IRS = header.SeqNum
-	socket.rcv.NXT = header.SeqNum + 1  // +1 for SYN
-	
+	socket.rcv.NXT = header.SeqNum + 1 // +1 for SYN
+
 	// Update send state
 	socket.snd.UNA = header.AckNum
 	socket.snd.NXT = header.AckNum
-	socket.snd.WND = header.WindowSize  // Store peer's advertised window
-	
+	socket.snd.WND = header.WindowSize // Store peer's advertised window
+
 	entry.State = TCP_ESTABLISHED
 
 	// Send ACK
@@ -229,7 +229,7 @@ func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 // Established functions
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
-	
+
 	if header.SeqNum == socket.rcv.NXT {
 		// Next expected sequence number matches, process in order data
 		processInOrderData(socket, payload)
@@ -348,7 +348,7 @@ func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader)
 		}
 		socket.snd.inFlightPackets.mutex.Unlock()
 
-		// socket.trySendData() // TODO: why are we trying to send data here? 
+		// socket.trySendData() // TODO: why are we trying to send data here?
 	}
 
 	// If this is the last ACK for data sent, we should stop the timer
@@ -392,7 +392,7 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	if entry.State == TCP_ESTABLISHED {
 		entry.State = TCP_CLOSE_WAIT
 	}
-	
+
 	if entry.State == TCP_FIN_WAIT_2 {
 		entry.State = TCP_TIME_WAIT
 		// Now wait for 2 * MSL before transitioning to CLOSED

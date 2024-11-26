@@ -22,3 +22,9 @@
 vhost
 vrouter
 net_configs/linear-r1h2/binaries.example.json
+vhost
+vhost_small
+vrouter
+net_configs/linear-r1h2/binaries.example.json
+net_configs/linear-r1h2/default.json
+net_configs/linear-r1h2/small.json

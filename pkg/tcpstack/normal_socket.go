@@ -21,6 +21,9 @@ type NormalSocket struct {
 	snd           SND
 	rcv           RCV
 	lastActive    time.Time
+	zeroWindowProbing bool
+	probeInterval    time.Duration
+	probeTimer       *time.Timer
 }
 
 const TCP_RETRIES = 3
@@ -174,114 +177,50 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 }
 
 func (socket *NormalSocket) trySendData() error {
-	// Changed this to a for loop to send larger packets, may need to revise this
-	for {
-		// bufferSpace := socket.snd.buf.Length()
-
-		// Free window space is size of receiver buffer - amount of data in flight
-		// Calculate data in flight using pointers
-		dataInFlight := socket.snd.NXT - socket.snd.UNA
-		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
-		fmt.Println("Free window space: ", freeWindowSpace)
-		fmt.Println("WND: ", socket.snd.WND)
-		fmt.Println("Data in flight: ", dataInFlight)
-
-
-		//fmt.Println("In flight packets: ", len(socket.snd.inFlightPackets))
-		// if bufferSpace == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
-		// 	// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
-		// 	// Which is not good and will lead to a lot of retransmissions
-
-		// 	return nil
-		// }
-
-		if socket.snd.WND > 0 {
-			if freeWindowSpace <= 0 {
-				continue
-				// return nil
-			}
-			maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
-
-			sendData := make([]byte, maxSendSize)
-			//  socket.snd.buf.SetBlocking(true) // We don't want blocking here, since we should never be trying to send more than the buffer has
-			n, err := socket.snd.buf.Read(sendData)
-			// This will return an error if there's nothing in the buffer
-			if err != nil {
-				return err
-			}
-
-			header := &TCPHeader{
-				SourcePort: socket.LocalPort,
-				DestPort:   socket.RemotePort,
-				SeqNum:     socket.snd.NXT,
-				AckNum:     socket.rcv.NXT,
-				DataOffset: 5,
-				Flags:      TCP_ACK,
-				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
-			}
-
-			// Send data packet
-			packet := serializeTCPPacket(header, sendData[:n])
-			err = socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-			if err != nil {
-				return err
-			}
-
-			// Add it to the inflight packets
-			socket.snd.inFlightPackets.mutex.Lock()
-			socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
-				data:     sendData[:n],
-				SeqNum:   socket.snd.NXT,
-				Length:   uint16(n),
-				timeSent: time.Now(),
-				flags:    TCP_ACK,
-			})
-			socket.snd.inFlightPackets.mutex.Unlock()
-
-			// Update send buffer sequence number
-			socket.snd.NXT += uint32(n)
-
-		} else if socket.snd.WND == 0 {
-			fmt.Println("Zero window, sending probe")
-			// return nil
-			// Here, we implement zero window probing
-			// We send a probe packet to check if the window is still zero
-
-			// We send one byte repeatedly
-
-			// We don't add them to inflight because we don't want it to be retransmitted
-
-			header := &TCPHeader{
-				SourcePort: socket.LocalPort,
-				DestPort:   socket.RemotePort,
-				SeqNum:     socket.snd.NXT,
-				AckNum:     socket.rcv.NXT,
-				DataOffset: 5,
-				Flags:      TCP_ACK,
-				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
-			}
-
-			// Send data packet
-			packet := serializeTCPPacket(header, []byte{0})
-			err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-			if err != nil {
-				return err
-			}
-
-			// Update send buffer sequence number
-			socket.snd.NXT += 1
-
-			if socket.snd.WND > 0 {
-				break
-			}
-
-			// We sleep so that we don't send too many probes
-			time.Sleep(ZWP_PROBE_INTERVAL)
-
-			// We don't need to add a timer since we have the RTO timer
+	if socket.snd.WND == 0 {
+		if !socket.zeroWindowProbing {
+			socket.zeroWindowProbing = true
+			socket.probeInterval = ZWP_PROBE_INTERVAL
+			socket.startProbing()
 		}
+		return nil
 	}
-	return nil
+	
+	// Reset probing state if window opened
+	if socket.zeroWindowProbing {
+		socket.zeroWindowProbing = false
+		socket.probeTimer.Stop()
+	}
+	
+	// ... rest of existing send logic ...
+}
+
+func (socket *NormalSocket) startProbing() {
+	socket.probeTimer = time.NewTimer(socket.probeInterval)
+	go func() {
+		for socket.zeroWindowProbing {
+			<-socket.probeTimer.C
+			
+			// Send 1-byte probe
+			header := &TCPHeader{
+				SourcePort: socket.LocalPort,
+				DestPort:   socket.RemotePort,
+				SeqNum:     socket.snd.NXT,
+				AckNum:     socket.rcv.NXT,
+				DataOffset: 5,
+				Flags:      TCP_ACK,
+				WindowSize: socket.rcv.WND,
+			}
+			
+			socket.tcpStack.sendPacket(socket.RemoteAddress, 
+				serializeTCPPacket(header, []byte{0}))
+			
+			// Exponential backoff
+			socket.probeInterval = min(socket.probeInterval * 2, 
+				60 * time.Second)
+			socket.probeTimer.Reset(socket.probeInterval)
+		}
+	}()
 }
 
 // Why is there no min already...
