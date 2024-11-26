@@ -192,12 +192,10 @@ func (socket *NormalSocket) trySendData() error {
 		dataInFlight := socket.snd.NXT - socket.snd.UNA
 		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
 
-<<<<<<< HEAD
 		//fmt.Println("In flight packets: ", len(socket.snd.inFlightPackets))
 		// if bufferSpace == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
 		// 	// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
 		// 	// Which is not good and will lead to a lot of retransmissions
-=======
 		// If no free window space, return (will be called again when ACK received)
 		if freeWindowSpace <= 0 {
 			return nil
@@ -211,7 +209,6 @@ func (socket *NormalSocket) trySendData() error {
 		if err != nil {
 			return err
 		}
->>>>>>> 576ed0eb0267494831bf111be0a3751236cbb6da
 
 		// Send the packet
 		err = socket.sendDataPacket(sendData[:n])
