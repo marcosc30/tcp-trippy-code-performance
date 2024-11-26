@@ -89,14 +89,26 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 			}
 		}
 
+	case "cl":
+		if len(args) != 2 {
+			fmt.Println("Usage: cl <socket ID>")
+			return
+		}
+		socketID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Println("Invalid socket ID")
+			return
+		}
+		handleClose(ts, socketID)
+
 	default:
 		fmt.Println("Unknown command. Type 'help' for available commands.")
 	}
 }
 
 func handleSend(ts *TCPStack, socketID int, data []byte) {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
+	// ts.mutex.Lock()
+	// defer ts.mutex.Unlock()
 
 	if socketID < 0 || socketID >= len(ts.tcpTable) {
 		fmt.Println("Invalid socket ID")
@@ -119,8 +131,8 @@ func handleSend(ts *TCPStack, socketID int, data []byte) {
 }
 
 func handleRead(ts *TCPStack, socketID int, bytes int) {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
+	// ts.mutex.Lock()
+	// defer ts.mutex.Unlock()
 
 	if socketID < 0 || socketID >= len(ts.tcpTable) {
 		fmt.Println("Invalid socket ID")
@@ -184,6 +196,30 @@ func handleList(ts *TCPStack) {
 	fmt.Println()
 }
 
+func handleClose(ts *TCPStack, socketID int) {
+	// ts.mutex.Lock()
+	// defer ts.mutex.Unlock()
+
+	if socketID < 0 || socketID >= len(ts.tcpTable) {
+		fmt.Println("Invalid socket ID")
+		return
+	}
+
+	socket := ts.getSocketByID(socketID)
+	if normalSocket, ok := socket.(*NormalSocket); ok {
+		err := normalSocket.VClose()
+		if err != nil {
+			fmt.Printf("Close error: %v\n", err)
+			return
+		}
+
+		fmt.Println("Closing connection")
+	} else {
+		fmt.Println("Invalid socket type")
+		return
+	}
+}
+
 func getStateString(state TCPState) string {
 	switch state {
 	case TCP_LISTEN:
@@ -194,6 +230,20 @@ func getStateString(state TCPState) string {
 		return "SYN_RECEIVED"
 	case TCP_ESTABLISHED:
 		return "ESTABLISHED"
+	case TCP_FIN_WAIT_1:
+		return "FIN_WAIT_1"
+	case TCP_FIN_WAIT_2:
+		return "FIN_WAIT_2"
+	case TCP_CLOSE_WAIT:
+		return "CLOSE_WAIT"
+	case TCP_CLOSING:
+		return "CLOSING"
+	case TCP_TIME_WAIT:
+		return "TIME_WAIT"
+	case TCP_LAST_ACK:
+		return "LAST_ACK"
+	case TCP_CLOSED:
+		return "CLOSED"
 	default:
 		return "UNKNOWN"
 	}
@@ -207,5 +257,7 @@ func printHelp() {
 	fmt.Println("  r <socket> <bytes> - Read bytes from socket")
 	fmt.Println("  ls                - List all TCP connections")
 	fmt.Println("  help              - Show this help message")
+	fmt.Println("  rtrinfo           - Show retransmission info")
+	fmt.Println("  cl <socket>       - Close connection\n")
 	fmt.Println()
 }

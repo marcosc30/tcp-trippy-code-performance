@@ -2,6 +2,7 @@ package tcpstack
 
 import (
 	"errors"
+	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
 	"sync"
@@ -144,7 +145,6 @@ func (ts *TCPStack) VInsertTableEntry(entry TCPTableEntry) {
 	case *NormalSocket:
 		go entry.SocketStruct.(*NormalSocket).manageRetransmissions()
 	}
-
 }
 
 func (ts *TCPStack) VDeleteTableEntry(entry TCPTableEntry) {
@@ -180,6 +180,7 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 		}
 	}
 
+	fmt.Println("entry not found")
 	return nil, errors.New("entry not found")
 }
 
