@@ -30,7 +30,11 @@ func (ns *NormalSocket) GetSID() int {
 }
 
 func (ns *NormalSocket) VClose() error {
-	// TODO: Clean up TCP connection state
+	// Check if connection is in the right state
+	table_entry, _ := ns.tcpStack.VFindTableEntry(ns.LocalAddress, ns.LocalPort, ns.RemoteAddress, ns.RemotePort)
+	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
+		return fmt.Errorf("connection not established")
+	}
 
 	// Send FIN packet
 	header := &TCPHeader{
@@ -42,7 +46,19 @@ func (ns *NormalSocket) VClose() error {
 		Flags:      TCP_FIN,
 		WindowSize: ns.rcv.WND,
 	}
-	
+
+	ns.snd.inFlightPackets.mutex.Lock()
+	ns.snd.inFlightPackets.packets = append(ns.snd.inFlightPackets.packets, InFlightPacket{
+		data:     nil,
+		SeqNum:   ns.SeqNum,
+		Length:   0,
+		timeSent: time.Now(),
+		flags:    TCP_FIN,
+	})
+	ns.snd.inFlightPackets.mutex.Unlock()
+
+	ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
+
 	packet := serializeTCPPacket(header, nil)
 	err := ns.tcpStack.sendPacket(ns.RemoteAddress, packet)
 	if err != nil {
@@ -50,7 +66,7 @@ func (ns *NormalSocket) VClose() error {
 	}
 
 	// Update state to FIN_WAIT_1
-	table_entry, _ := ns.tcpStack.VFindTableEntry(ns.LocalAddress, ns.LocalPort, ns.RemoteAddress, ns.RemotePort)
+	table_entry, _ = ns.tcpStack.VFindTableEntry(ns.LocalAddress, ns.LocalPort, ns.RemoteAddress, ns.RemotePort)
 	if table_entry.State == TCP_ESTABLISHED {
 		table_entry.State = TCP_FIN_WAIT_1
 	} else if table_entry.State == TCP_CLOSE_WAIT {
@@ -126,21 +142,16 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 	fmt.Println("VWrite")
 
 	// Check if connection is in the right state
-	
+
 	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
-	if err != nil {	
+	if err != nil {
 		fmt.Println("Error finding table entry: ", err)
 		return err
 	}
 
-	fmt.Println("Table entry state: ", table_entry.State)
-
 	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
 		return fmt.Errorf("connection not established")
 	}
-
-	// Start the RTO timer
-	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
 
 	// Write data to send buffer
 	_, err = socket.snd.buf.Write(data)
@@ -149,6 +160,11 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 	}
 
 	// What is the behavior if there is more data than the send buffer can handle
+
+	// Start the RTO timer
+	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+
+	// We start the RTO timer here so that it is per write, not per packet
 
 	// Try to send immediately
 	return socket.trySendData()
@@ -201,6 +217,7 @@ func (socket *NormalSocket) trySendData() error {
 				SeqNum:   socket.snd.NXT,
 				Length:   uint16(n),
 				timeSent: time.Now(),
+				flags:    TCP_ACK,
 			})
 			socket.snd.inFlightPackets.mutex.Unlock()
 
@@ -244,7 +261,7 @@ func (socket *NormalSocket) trySendData() error {
 				time.Sleep(ZWP_PROBE_INTERVAL)
 
 				// We don't need to add a timer since we have the RTO timer
-		}
+			}
 		}
 	}
 }
@@ -290,7 +307,7 @@ func (socket *NormalSocket) retransmitPacket() error {
 				SeqNum:     packet.SeqNum,
 				AckNum:     socket.rcv.NXT,
 				DataOffset: 5,
-				Flags:      TCP_ACK,
+				Flags:      packet.flags,
 				WindowSize: uint16(socket.rcv.buf.Free()),
 			}
 
@@ -392,7 +409,7 @@ func abs(x int64) int64 {
 func (socket *NormalSocket) VRead(data []byte) (int, error) {
 	// Check if connection is in the right state
 	table_entry, _ := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
-	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_FIN_WAIT_1 && table_entry.State != TCP_FIN_WAIT_2  {
+	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_FIN_WAIT_1 && table_entry.State != TCP_FIN_WAIT_2 {
 		return 0, fmt.Errorf("connection not established")
 	}
 
