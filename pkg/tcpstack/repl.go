@@ -101,6 +101,37 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 		}
 		handleClose(ts, socketID)
 
+	case "sf":
+		if len(args) != 4 {
+			fmt.Println("Usage: sf <file path> <addr> <port>")
+			return
+		}
+		filePath := args[1]
+		addr, err := netip.ParseAddr(args[2])
+		if err != nil {
+			fmt.Println("Invalid IP address")
+			return
+		}
+		port, err := strconv.ParseUint(args[3], 10, 16)
+		if err != nil {
+			fmt.Println("Invalid port number")
+			return
+		}
+		sendFile(ts, filePath, addr, uint16(port))
+		
+	case "rf":
+		if len(args) != 3 {
+			fmt.Println("Usage: rf <dest file> <port>")
+			return
+		}
+		destFile := args[1]
+		port, err := strconv.ParseUint(args[2], 10, 16)
+		if err != nil {
+			fmt.Println("Invalid port number")
+			return
+		}
+		receiveFile(ts, destFile, uint16(port))
+		
 	default:
 		fmt.Println("Unknown command. Type 'help' for available commands.")
 	}
@@ -220,6 +251,79 @@ func handleClose(ts *TCPStack, socketID int) {
 	}
 }
 
+func sendFile(ts *TCPStack, filePath string, addr netip.Addr, port uint16) {
+	// ts.mutex.Lock()
+	// defer ts.mutex.Unlock()
+
+	// See if we are already connected with the destination
+	var socketID int
+	for _, entry := range ts.tcpTable {
+		if entry.RemoteAddress == addr && entry.RemotePort == port {
+			socketID = entry.SocketStruct.GetSID()
+			break
+		}
+	}
+
+	// If not, connect to the destination
+	if socketID == 0 {
+		socket := &NormalSocket{}
+		err := socket.VConnect(ts, addr, port)
+		if err != nil {
+			fmt.Printf("Connection failed: %v\n", err)
+			return
+		}
+		socketID = socket.GetSID()
+	}
+
+	// Send the file
+	socket := ts.getSocketByID(socketID)
+	if normalSocket, ok := socket.(*NormalSocket); ok {
+		go normalSocket.VSendFile(filePath)
+
+		fmt.Printf("Sending file\n")
+	} else {
+		fmt.Println("Invalid socket type")
+		return
+	}
+}
+
+func receiveFile(ts *TCPStack, destFile string, port uint16) {
+	// ts.mutex.Lock()
+	// defer ts.mutex.Unlock()
+
+	// See if we are already connected with the source
+	var socketID int
+	for _, entry := range ts.tcpTable {
+		if entry.LocalPort == port {
+			socketID = entry.SocketStruct.GetSID()
+			break
+		}
+	}
+
+	// If not, accept the connection
+	if socketID == 0 {
+		ls := VListen(ts, port)
+		fmt.Printf("Listening on port %d\n", port)
+
+		// Wait for connection
+		conn := ls.VAccept()
+		if conn != nil {
+			socketID = conn.GetSID()
+		}
+	}
+
+	// Receive the file
+	socket := ts.getSocketByID(socketID)
+	if normalSocket, ok := socket.(*NormalSocket); ok {
+		go normalSocket.VReceiveFile(destFile)
+
+		fmt.Printf("Receiving file\n")
+	} else {
+		fmt.Println("Invalid socket type")
+		return
+	}
+}
+
 func getStateString(state TCPState) string {
 	switch state {
 	case TCP_LISTEN:
@@ -251,13 +355,15 @@ func getStateString(state TCPState) string {
 
 func printHelp() {
 	fmt.Println("\nAvailable commands:")
-	fmt.Println("  a <port>          - Accept connections on port")
-	fmt.Println("  c <ip> <port>     - Connect to ip:port")
-	fmt.Println("  s <socket> <data> - Send data on socket")
-	fmt.Println("  r <socket> <bytes> - Read bytes from socket")
-	fmt.Println("  ls                - List all TCP connections")
-	fmt.Println("  help              - Show this help message")
-	fmt.Println("  rtrinfo           - Show retransmission info")
-	fmt.Println("  cl <socket>       - Close connection\n")
+	fmt.Println("  a <port>                         - Accept connections on port")
+	fmt.Println("  c <ip> <port>     				- Connect to ip:port")
+	fmt.Println("  s <socket> <data> 				- Send data on socket")
+	fmt.Println("  r <socket> <bytes> 				- Read bytes from socket")
+	fmt.Println("  ls                				- List all TCP connections")
+	fmt.Println("  help              				- Show this help message")
+	fmt.Println("  rtrinfo           				- Show retransmission info")
+	fmt.Println("  cl <socket>       				- Close connection")
+	fmt.Println("  sf <file path> <addr> <port> 	- Send file")
+	fmt.Println("  rf <dest file> <port> 			- Receive file\n")
 	fmt.Println()
 }
