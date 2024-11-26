@@ -41,20 +41,6 @@ type SND struct {
 	inFlightPackets InFlightPacketStack
 }
 
-type InFlightPacket struct {
-	data     []byte // This may be too much overhead to track the data of every in flight packet
-	SeqNum   uint32
-	Length   uint16
-	timeSent time.Time
-	flags    uint8
-	//CalculatedRTO time.Duration // This should be done per connection, not per packet
-}
-
-type InFlightPacketStack struct {
-	packets []InFlightPacket
-	mutex   sync.Mutex
-}
-
 type RCV struct {
 	buf *ringbuffer.RingBuffer
 	WND uint16
