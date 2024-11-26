@@ -345,8 +345,7 @@ func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader)
 		}
 		socket.snd.inFlightPackets.mutex.Unlock()
 
-		socket.trySendData() // TODO: why are we trying to send data here?
-
+		// socket.trySendData() // TODO: why are we trying to send data here? 
 	}
 
 	// If this is the last ACK for data sent, we should stop the timer

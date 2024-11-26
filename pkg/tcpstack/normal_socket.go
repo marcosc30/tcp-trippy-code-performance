@@ -8,7 +8,6 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-const TCP_RETRIES = 3
 
 type NormalSocket struct {
 	SID           int
@@ -180,7 +179,8 @@ func (socket *NormalSocket) trySendData() error {
 
 		if socket.snd.WND > 0 {
 			if freeWindowSpace <= 0 {
-				return nil
+				continue
+				// return nil
 			}
 			maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
 
@@ -224,45 +224,45 @@ func (socket *NormalSocket) trySendData() error {
 
 		} else if socket.snd.WND == 0 {
 			fmt.Println("Zero window, sending probe")
-			return nil
+			// return nil
 			// Here, we implement zero window probing
 			// We send a probe packet to check if the window is still zero
 
-				// We send one byte repeatedly
+			// We send one byte repeatedly
 
-				// We don't add them to inflight because we don't want it to be retransmitted
+			// We don't add them to inflight because we don't want it to be retransmitted
 
-				header := &TCPHeader{
-					SourcePort: socket.LocalPort,
-					DestPort:   socket.RemotePort,
-					SeqNum:     socket.snd.NXT,
-					AckNum:     socket.rcv.NXT,
-					DataOffset: 5,
-					Flags:      TCP_ACK,
-					WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
-				}
+			header := &TCPHeader{
+				SourcePort: socket.LocalPort,
+				DestPort:   socket.RemotePort,
+				SeqNum:     socket.snd.NXT,
+				AckNum:     socket.rcv.NXT,
+				DataOffset: 5,
+				Flags:      TCP_ACK,
+				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+			}
 
-				// Send data packet
-				packet := serializeTCPPacket(header, []byte{0})
-				err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-				if err != nil {
-					return err
-				}
+			// Send data packet
+			packet := serializeTCPPacket(header, []byte{0})
+			err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+			if err != nil {
+				return err
+			}
 
-				// Update send buffer sequence number
-				socket.snd.NXT += 1
+			// Update send buffer sequence number
+			socket.snd.NXT += 1
 
-				if socket.snd.WND > 0 {
-					break
-				}
+			if socket.snd.WND > 0 {
+				break
+			}
 
-				// We sleep so that we don't send too many probes
-				time.Sleep(ZWP_PROBE_INTERVAL)
+			// We sleep so that we don't send too many probes
+			time.Sleep(ZWP_PROBE_INTERVAL)
 
-				// We don't need to add a timer since we have the RTO timer
-		}
+			// We don't need to add a timer since we have the RTO timer
 		}
 	}
+	return nil
 }
 
 func (socket *NormalSocket) manageRetransmissions() {

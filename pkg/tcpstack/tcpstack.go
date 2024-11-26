@@ -7,12 +7,11 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-	"fmt"
 	"github.com/smallnest/ringbuffer"
 )
 
 const BUFFER_SIZE uint16 = 65535
-// const BUFFER_SIZE uint16 = 
+// const BUFFER_SIZE uint16 = 3
 
 type TCPStack struct {
 	tcpTable []TCPTableEntry
