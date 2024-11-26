@@ -23,6 +23,7 @@ type NormalSocket struct {
 }
 
 const TCP_RETRIES = 3
+const ZWP_PROBE_INTERVAL = 1 * time.Second
 
 func (ns *NormalSocket) GetSID() int {
 	return ns.SID
@@ -206,13 +207,44 @@ func (socket *NormalSocket) trySendData() error {
 			// Update send buffer sequence number
 			socket.snd.NXT += uint32(n)
 
-		} else if maxSendSize == 0 {
-			// Here, we implement zero window probing
-			// We send a probe packet to check if the window is still zero
+		} else if maxSendSize == 0 && len(socket.snd.inFlightPackets.packets) == 0 {
+			for {
+				// Here, we implement zero window probing
+				// We send a probe packet to check if the window is still zero
 
-			// We send one byte repeatedly
+				// We send one byte repeatedly
 
-			// We don't add them to inflight because we don't want it to be retransmitted
+				// We don't add them to inflight because we don't want it to be retransmitted
+
+				header := &TCPHeader{
+					SourcePort: socket.LocalPort,
+					DestPort:   socket.RemotePort,
+					SeqNum:     socket.snd.NXT,
+					AckNum:     socket.rcv.NXT,
+					DataOffset: 5,
+					Flags:      TCP_ACK,
+					WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+				}
+
+				// Send data packet
+				packet := serializeTCPPacket(header, []byte{0})
+				err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+				if err != nil {
+					return err
+				}
+
+				// Update send buffer sequence number
+				socket.snd.NXT += 1
+
+				if socket.snd.WND > 0 {
+					break
+				}
+
+				// We sleep so that we don't send too many probes
+				time.Sleep(ZWP_PROBE_INTERVAL)
+
+				// We don't need to add a timer since we have the RTO timer
+		}
 		}
 	}
 }
