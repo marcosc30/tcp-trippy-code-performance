@@ -9,7 +9,7 @@ import (
 
 // TODO: CHANGE DONT BE AN IDIOT AND FORGET
 // const MAX_TCP_PAYLOAD = 1400 - int(unsafe.Sizeof(TCPHeader{})) - 20 // 20 is size of IP header
-const MAX_TCP_PAYLOAD = 1 // testing
+const MAX_TCP_PAYLOAD = 2 // testing
 
 type TCPHeader struct {
 	SourcePort uint16

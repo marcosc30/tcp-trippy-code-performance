@@ -52,7 +52,7 @@ func (socket *NormalSocket) retransmitPacket() error {
 			// This is the first unacked segment
 
 			// Check if we have reached max retransmissions
-			if socket.snd.retransmissions > TCP_RETRIES {
+			if socket.snd.retransmissions > RTO_MAX_RETRIES {
 				return fmt.Errorf("max retransmissions reached")
 			}
 

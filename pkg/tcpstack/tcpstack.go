@@ -13,6 +13,8 @@ import (
 const BUFFER_SIZE uint16 = 65535
 // const BUFFER_SIZE uint16 = 3
 
+const RTO_MAX_RETRIES = 3
+
 type TCPStack struct {
 	tcpTable []TCPTableEntry
 	mutex    sync.Mutex

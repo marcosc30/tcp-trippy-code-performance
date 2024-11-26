@@ -42,11 +42,8 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 
 	// Established
 	case TCP_ESTABLISHED:
-		if header.Flags&TCP_ACK != 0 {
-			handleEstablishedACK(ts, entry, header)
-		}
-		if len(payload) > 0 {
-			handleData(ts, entry, header, payload)
+		if header.Flags&TCP_ACK != 0 || len(payload) > 0 {
+			handleEstablishedPacket(ts, entry, header, payload)
 		}
 		if header.Flags&TCP_FIN != 0 {
 			handleFIN(ts, entry, header)
@@ -76,11 +73,11 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		if header.Flags&TCP_ACK != 0 {
 			handleClosingACK(ts, entry, header)
 		}
-		
+
 	case TCP_CLOSE_WAIT:
 		// if header.Flags&TCP_FIN != 0 {
 		// 	handleFIN(ts, entry, header)
-		// } 
+		// }
 		// Should do nothing here
 
 	case TCP_CLOSING:
@@ -124,15 +121,15 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 
 	// Initialize send/receive state
 	newSocket.snd = SND{
-		buf: ringbuffer.New(int(BUFFER_SIZE)),
-		ISS: newSocket.SeqNum,
-		UNA: newSocket.SeqNum,
-		NXT: newSocket.SeqNum + 1,  // +1 for SYN
-		WND: header.WindowSize,
-		RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
-		calculatedRTO: 1 * time.Second,
-		SRTT:          0,
-		RTTVAR:        0,
+		buf:             ringbuffer.New(int(BUFFER_SIZE)),
+		ISS:             newSocket.SeqNum,
+		UNA:             newSocket.SeqNum,
+		NXT:             newSocket.SeqNum + 1, // +1 for SYN
+		WND:             header.WindowSize,
+		RTOtimer:        time.NewTimer(1 * time.Second), // This is the default value
+		calculatedRTO:   1 * time.Second,
+		SRTT:            0,
+		RTTVAR:          0,
 		retransmissions: 0,
 	}
 	newSocket.snd.RTOtimer.Stop()
@@ -141,7 +138,7 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 	newSocket.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
 		IRS: header.SeqNum,
-		NXT: header.SeqNum + 1,  // +1 for SYN
+		NXT: header.SeqNum + 1, // +1 for SYN
 		WND: BUFFER_SIZE,
 	}
 	newSocket.rcv.buf.SetBlocking(true)
@@ -186,13 +183,13 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 
 	// Update receive state with peer's initial values
 	socket.rcv.IRS = header.SeqNum
-	socket.rcv.NXT = header.SeqNum + 1  // +1 for SYN
-	
+	socket.rcv.NXT = header.SeqNum + 1 // +1 for SYN
+
 	// Update send state
 	socket.snd.UNA = header.AckNum
 	socket.snd.NXT = header.AckNum
-	socket.snd.WND = header.WindowSize  // Store peer's advertised window
-	
+	socket.snd.WND = header.WindowSize // Store peer's advertised window
+
 	entry.State = TCP_ESTABLISHED
 
 	// Send ACK
@@ -229,7 +226,7 @@ func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 // Established functions
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
-	
+
 	if header.SeqNum == socket.rcv.NXT {
 		// Next expected sequence number matches, process in order data
 		processInOrderData(socket, payload)
@@ -321,51 +318,58 @@ func removePacket(earlyData []EarlyData, seqNum uint32) []EarlyData {
 	return earlyData
 }
 
-func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
+func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
-	// We need to address the case that this is an ACK with data in it that we're receiving, we don't want to reset our UNA as a sender in this case
+	// 1. Process any data
+	if len(payload) > 0 {
+		handleData(ts, entry, header, payload)
+	}
+	
+	// 2. Process ACK if present
+	if header.Flags&TCP_ACK != 0 {
+		// Ignore old ACKs
+		if header.AckNum <= socket.snd.UNA {
+			return
+		}
 
-	// Check if this is an ACK for a packet we sent, we may be able to do this with inflight packets, checking if it's empty or if the ack matches a packet
-	if header.AckNum > socket.snd.UNA {
-
-		// Now, we recompute the RTO
-		socket.computeRTO(header.AckNum, time.Now())
-		socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
-		socket.snd.retransmissions = 0
-
-		socket.snd.UNA = header.AckNum
+		// Update send window and last acknowledged sequence
 		socket.snd.WND = header.WindowSize
+		oldUNA := socket.snd.UNA
+		socket.snd.UNA = header.AckNum
 
-		socket.lastActive = time.Now()
-
-		// Remove it from the inflight packets
+		// Remove acknowledged packets from in-flight list
 		socket.snd.inFlightPackets.mutex.Lock()
-		for i, packet := range socket.snd.inFlightPackets.packets {
-			if packet.SeqNum+uint32(packet.Length) <= header.AckNum {
-				socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets[:i], socket.snd.inFlightPackets.packets[i+1:]...)
+		newPackets := make([]InFlightPacket, 0)
+		for _, pkt := range socket.snd.inFlightPackets.packets {
+			if pkt.SeqNum + uint32(pkt.Length) > header.AckNum {
+				newPackets = append(newPackets, pkt)
+			} else {
+				// Use acknowledged packet for RTT calculation
+				if pkt.SeqNum == oldUNA {
+					socket.computeRTO(pkt.SeqNum, pkt.timeSent)
+				}
 			}
 		}
+		socket.snd.inFlightPackets.packets = newPackets
 		socket.snd.inFlightPackets.mutex.Unlock()
 
-		// socket.trySendData() // TODO: why are we trying to send data here? 
-	}
+		// Reset retransmission timer if we have unacked data
+		if len(socket.snd.inFlightPackets.packets) > 0 {
+			socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+		} else {
+			socket.snd.RTOtimer.Stop()
+		}
 
-	// If this is the last ACK for data sent, we should stop the timer
-	if header.AckNum == socket.snd.NXT {
-		socket.snd.RTOtimer.Stop()
+		// Reset retransmission count on successful ACK
+		socket.snd.retransmissions = 0
+		
+		// If window has opened up, try sending more data
+		if socket.snd.WND > 0 {
+			socket.trySendData()
+		}
 	}
 }
-
-// Tear down functions
-
-// Event					State (A)	State (B)
-// A sends FIN				FIN_WAIT_1	ESTABLISHED
-// B sends ACK				FIN_WAIT_2	CLOSE_WAIT
-// B sends FIN				FIN_WAIT_2	LAST_ACK
-// A sends ACK				TIME_WAIT	CLOSED
-// A waits in TIME_WAIT		TIME_WAIT	CLOSED
-// A transitions to CLOSED	CLOSED		CLOSED
 
 func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket := entry.SocketStruct.(*NormalSocket)
@@ -392,7 +396,7 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	if entry.State == TCP_ESTABLISHED {
 		entry.State = TCP_CLOSE_WAIT
 	}
-	
+
 	if entry.State == TCP_FIN_WAIT_2 {
 		entry.State = TCP_TIME_WAIT
 		// Now wait for 2 * MSL before transitioning to CLOSED
@@ -427,7 +431,19 @@ func handleClosingACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	}
 }
 
+// Event                    State (A)   State (B)
+// A sends FIN              FIN_WAIT_1  ESTABLISHED
+// B sends ACK              FIN_WAIT_2  CLOSE_WAIT
+// B sends FIN              FIN_WAIT_2  LAST_ACK
+// A sends ACK              TIME_WAIT   CLOSED
+// A waits in TIME_WAIT     TIME_WAIT   CLOSED
+// A transitions to CLOSED  CLOSED      CLOSED
+
+
 // Other state changes:
 // After sending first FIN: A goes from ESTABLISHED to FIN_WAIT_1
 // After sending FIN in CLOSE_WAIT: A goes to LAST_ACK
 // After waiting for 2*MSL in TIME_WAIT: A goes to CLOSED
+
+
+
