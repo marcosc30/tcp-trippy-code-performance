@@ -8,7 +8,7 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-const MSL = 4 * time.Second
+const MSL = 60 * time.Second
 
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
 	header, payload := ParseTCPHeader(packet)
@@ -78,9 +78,10 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		}
 		
 	case TCP_CLOSE_WAIT:
-		if header.Flags&TCP_FIN != 0 {
-			handleFIN(ts, entry, header)
-		}
+		// if header.Flags&TCP_FIN != 0 {
+		// 	handleFIN(ts, entry, header)
+		// } 
+		// Should do nothing here
 
 	case TCP_CLOSING:
 		if header.Flags&TCP_ACK != 0 {
@@ -393,9 +394,12 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	if entry.State == TCP_FIN_WAIT_2 {
 		entry.State = TCP_TIME_WAIT
 		// Now wait for 2 * MSL before transitioning to CLOSED
-		time.Sleep(2 * MSL)
-		entry.State = TCP_CLOSED
-		ts.VDeleteTableEntry(*entry)
+		// time.Sleep(2 * MSL) This doesn't work obviously
+		go func() {
+			time.Sleep(2 * MSL)
+			entry.State = TCP_CLOSED
+			ts.VDeleteTableEntry(*entry)
+		}()
 	}
 
 	// If we're in TIME_WAIT, we just resend the ACK but don't change the state

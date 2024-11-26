@@ -25,15 +25,15 @@ type TCPStack struct {
 }
 
 type SND struct {
-	buf           *ringbuffer.RingBuffer
-	UNA           uint32        // oldest unacknowledged sequence number
-	NXT           uint32        // next sequence number to be sent
-	WND           uint16        // peer's advertised window size
-	ISS           uint32        // initial send sequence number
-	calculatedRTO time.Duration // RTO for that connection, calculated based on RTT
-	RTOtimer      *time.Timer   // Timer for RTO
-	SRTT          time.Duration // Smoothed RTT
-	RTTVAR        time.Duration // RTT variance
+	buf             *ringbuffer.RingBuffer
+	UNA             uint32        // oldest unacknowledged sequence number
+	NXT             uint32        // next sequence number to be sent
+	WND             uint16        // peer's advertised window size
+	ISS             uint32        // initial send sequence number
+	calculatedRTO   time.Duration // RTO for that connection, calculated based on RTT
+	RTOtimer        *time.Timer   // Timer for RTO
+	SRTT            time.Duration // Smoothed RTT
+	RTTVAR          time.Duration // RTT variance
 	retransmissions int
 
 	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
@@ -41,16 +41,17 @@ type SND struct {
 }
 
 type InFlightPacket struct {
-	data            []byte // This may be too much overhead to track the data of every in flight packet
-	SeqNum          uint32
-	Length          uint16
-	timeSent        time.Time
+	data     []byte // This may be too much overhead to track the data of every in flight packet
+	SeqNum   uint32
+	Length   uint16
+	timeSent time.Time
+	flags    uint8
 	//CalculatedRTO time.Duration // This should be done per connection, not per packet
 }
 
 type InFlightPacketStack struct {
 	packets []InFlightPacket
-	mutex  sync.Mutex
+	mutex   sync.Mutex
 }
 
 type RCV struct {
@@ -206,4 +207,3 @@ func (ts *TCPStack) allocatePort() uint16 {
 	}
 	return port
 }
-
