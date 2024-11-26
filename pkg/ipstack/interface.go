@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"fmt"
 )
 
 // Here, we also define the interface struct
@@ -58,6 +59,12 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 			slog.Error("Error reading from interface", "error", err, "interface", i.Name)
 		}
 
+		fmt.Println("Received packet on interface", i.Name)
+		fmt.Println("Down?", i.Down)
+
+		if i.Down {
+			continue
+		}
 
 		packet, err := UnmarshalPacket(buffer[:n])
 		if err != nil {

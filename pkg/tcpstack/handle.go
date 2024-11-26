@@ -124,15 +124,15 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 
 	// Initialize send/receive state
 	newSocket.snd = SND{
-		buf:             ringbuffer.New(int(BUFFER_SIZE)),
-		ISS:             newSocket.SeqNum,
-		UNA:             newSocket.SeqNum,
-		NXT:             newSocket.SeqNum + 1, // +1 for SYN
-		WND:             BUFFER_SIZE,
-		RTOtimer:        time.NewTimer(1 * time.Second), // This is the default value
-		calculatedRTO:   1 * time.Second,
-		SRTT:            0,
-		RTTVAR:          0,
+		buf: ringbuffer.New(int(BUFFER_SIZE)),
+		ISS: newSocket.SeqNum,
+		UNA: newSocket.SeqNum,
+		NXT: newSocket.SeqNum + 1,  // +1 for SYN
+		WND: header.WindowSize,
+		RTOtimer:      time.NewTimer(1 * time.Second), // This is the default value
+		calculatedRTO: 1 * time.Second,
+		SRTT:          0,
+		RTTVAR:        0,
 		retransmissions: 0,
 	}
 	newSocket.snd.RTOtimer.Stop()
@@ -140,8 +140,8 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 	newSocket.rcv = RCV{
 		buf: ringbuffer.New(int(BUFFER_SIZE)),
 		IRS: header.SeqNum,
-		NXT: header.SeqNum + 1, // +1 for SYN
-		WND: header.WindowSize,
+		NXT: header.SeqNum + 1,  // +1 for SYN
+		WND: BUFFER_SIZE,
 	}
 
 	// Get the listening socket to add to accept queue
@@ -184,13 +184,13 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 
 	// Update receive state with peer's initial values
 	socket.rcv.IRS = header.SeqNum
-	socket.rcv.NXT = header.SeqNum + 1 // +1 for SYN
-	socket.rcv.WND = header.WindowSize // Store peer's advertised window
-
+	socket.rcv.NXT = header.SeqNum + 1  // +1 for SYN
+	
 	// Update send state
 	socket.snd.UNA = header.AckNum
 	socket.snd.NXT = header.AckNum
-
+	socket.snd.WND = header.WindowSize  // Store peer's advertised window
+	
 	entry.State = TCP_ESTABLISHED
 
 	// Send ACK
@@ -227,30 +227,25 @@ func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 // Established functions
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
-
-	// Check if sequence number matches what we expect
+	
 	if header.SeqNum == socket.rcv.NXT {
-		// Write the data to receive buffer
-		n, err := socket.rcv.buf.Write(payload)
-		// If bigger than the buffer, recieve enough to fill, then send back
-		// ack for bytes written, allows sender to zero window probe
-		if err != nil {
-			fmt.Printf("Error writing to receive buffer: %v\n", err)
-			return
-		}
+		// Next expected sequence number matches, process in order data
+		processInOrderData(socket, payload)
+	} else if header.SeqNum > socket.rcv.NXT {
+		fmt.Println("Out of order packet received")
+		// Store out of order data
+		socket.rcv.earlyData = append(socket.rcv.earlyData, EarlyData{
+			data:   payload,
+			SeqNum: header.SeqNum,
+			Length: uint16(len(payload)),
+		})
 
-		// Update next expected sequence number
-		socket.rcv.NXT += uint32(n)
-
-		// Update receive window
-		socket.rcv.WND = uint16(socket.rcv.buf.Free())
-
-		// Send ACK
+		// Send duplicate ACK for the last in order se received
 		ackHeader := &TCPHeader{
 			SourcePort: entry.LocalPort,
 			DestPort:   entry.RemotePort,
 			SeqNum:     socket.snd.NXT,
-			AckNum:     socket.rcv.NXT,
+			AckNum:     socket.rcv.NXT, // next expected seq num
 			DataOffset: 5,
 			Flags:      TCP_ACK,
 			WindowSize: socket.rcv.WND,
@@ -258,10 +253,70 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 
 		packet := serializeTCPPacket(ackHeader, nil)
 		ts.sendPacket(entry.RemoteAddress, packet)
-	} else {
-		// TODO: Handle out of order data
-		fmt.Println("Out of order data")
 	}
+}
+
+func processInOrderData(socket *NormalSocket, payload []byte) {
+	n, err := socket.rcv.buf.Write(payload)
+	if err != nil {
+		fmt.Printf("Error writing to receive buffer: %v\n", err)
+		return
+	}
+
+	socket.rcv.NXT += uint32(n)
+
+	// Iterate as long as we find packets that are now in order
+	for {
+		nextPacket := findNextSequence(socket.rcv.earlyData, socket.rcv.NXT)
+		if nextPacket == nil {
+			break
+		}
+
+		n, err := socket.rcv.buf.Write(nextPacket.data)
+		if err != nil {
+			fmt.Printf("Error writing early data to receive buffer: %v\n", err)
+			break
+		}
+
+		socket.rcv.NXT += uint32(n)
+
+		socket.rcv.earlyData = removePacket(socket.rcv.earlyData, nextPacket.SeqNum)
+	}
+
+	socket.rcv.WND = uint16(socket.rcv.buf.Free())
+
+	// Send ACK for all processed data
+	// Per RFC spec, sending ACK for last in order byte received
+	ackHeader := &TCPHeader{
+		SourcePort: socket.LocalPort,
+		DestPort:   socket.RemotePort,
+		SeqNum:     socket.snd.NXT,
+		AckNum:     socket.rcv.NXT,
+		DataOffset: 5,
+		Flags:      TCP_ACK,
+		WindowSize: socket.rcv.WND,
+	}
+
+	packet := serializeTCPPacket(ackHeader, nil)
+	socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+}
+
+func findNextSequence(earlyData []EarlyData, expectedSeq uint32) *EarlyData {
+	for i := range earlyData {
+		if earlyData[i].SeqNum == expectedSeq {
+			return &earlyData[i]
+		}
+	}
+	return nil
+}
+
+func removePacket(earlyData []EarlyData, seqNum uint32) []EarlyData {
+	for i := range earlyData {
+		if earlyData[i].SeqNum == seqNum {
+			return append(earlyData[:i], earlyData[i+1:]...)
+		}
+	}
+	return earlyData
 }
 
 func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
@@ -291,8 +346,7 @@ func handleEstablishedACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader)
 		}
 		socket.snd.inFlightPackets.mutex.Unlock()
 
-		//socket.trySendData() why are we trying to send data here?
-
+		// socket.trySendData() // TODO: why are we trying to send data here? 
 	}
 
 	// If this is the last ACK for data sent, we should stop the timer

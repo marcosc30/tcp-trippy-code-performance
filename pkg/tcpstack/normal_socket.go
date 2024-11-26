@@ -8,6 +8,7 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
+
 type NormalSocket struct {
 	SID           int
 	LocalAddress  netip.Addr
@@ -173,18 +174,32 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 func (socket *NormalSocket) trySendData() error {
 	// Changed this to a for loop to send larger packets, may need to revise this
 	for {
-		availableData := socket.snd.buf.Length()
+		// bufferSpace := socket.snd.buf.Length()
+
+		// Free window space is size of receiver buffer - amount of data in flight
+		// Calculate data in flight using pointers
+		dataInFlight := socket.snd.NXT - socket.snd.UNA
+		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
+		fmt.Println("Free window space: ", freeWindowSpace)
+		fmt.Println("WND: ", socket.snd.WND)
+		fmt.Println("Data in flight: ", dataInFlight)
+
+
 		//fmt.Println("In flight packets: ", len(socket.snd.inFlightPackets))
-		if availableData == 0 { //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
-			// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
-			// Which is not good and will lead to a lot of retransmissions
+		// if bufferSpace == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
+		// 	// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
+		// 	// Which is not good and will lead to a lot of retransmissions
 
-			return nil
-		}
-		maxSendSize := min(int(socket.snd.WND), availableData)
-		// We should also add a maximum packet size restriction on this
+		// 	return nil
+		// }
 
-		if maxSendSize > 0 {
+		if socket.snd.WND > 0 {
+			if freeWindowSpace <= 0 {
+				continue
+				// return nil
+			}
+			maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
+
 			sendData := make([]byte, maxSendSize)
 			//  socket.snd.buf.SetBlocking(true) // We don't want blocking here, since we should never be trying to send more than the buffer has
 			n, err := socket.snd.buf.Read(sendData)
@@ -224,46 +239,47 @@ func (socket *NormalSocket) trySendData() error {
 			// Update send buffer sequence number
 			socket.snd.NXT += uint32(n)
 
-		} else if maxSendSize == 0 && len(socket.snd.inFlightPackets.packets) == 0 {
-			for {
-				// Here, we implement zero window probing
-				// We send a probe packet to check if the window is still zero
+		} else if socket.snd.WND == 0 {
+			fmt.Println("Zero window, sending probe")
+			// return nil
+			// Here, we implement zero window probing
+			// We send a probe packet to check if the window is still zero
 
-				// We send one byte repeatedly
+			// We send one byte repeatedly
 
-				// We don't add them to inflight because we don't want it to be retransmitted
+			// We don't add them to inflight because we don't want it to be retransmitted
 
-				header := &TCPHeader{
-					SourcePort: socket.LocalPort,
-					DestPort:   socket.RemotePort,
-					SeqNum:     socket.snd.NXT,
-					AckNum:     socket.rcv.NXT,
-					DataOffset: 5,
-					Flags:      TCP_ACK,
-					WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
-				}
-
-				// Send data packet
-				packet := serializeTCPPacket(header, []byte{0})
-				err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
-				if err != nil {
-					return err
-				}
-
-				// Update send buffer sequence number
-				socket.snd.NXT += 1
-
-				if socket.snd.WND > 0 {
-					break
-				}
-
-				// We sleep so that we don't send too many probes
-				time.Sleep(ZWP_PROBE_INTERVAL)
-
-				// We don't need to add a timer since we have the RTO timer
+			header := &TCPHeader{
+				SourcePort: socket.LocalPort,
+				DestPort:   socket.RemotePort,
+				SeqNum:     socket.snd.NXT,
+				AckNum:     socket.rcv.NXT,
+				DataOffset: 5,
+				Flags:      TCP_ACK,
+				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
 			}
+
+			// Send data packet
+			packet := serializeTCPPacket(header, []byte{0})
+			err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+			if err != nil {
+				return err
+			}
+
+			// Update send buffer sequence number
+			socket.snd.NXT += 1
+
+			if socket.snd.WND > 0 {
+				break
+			}
+
+			// We sleep so that we don't send too many probes
+			time.Sleep(ZWP_PROBE_INTERVAL)
+
+			// We don't need to add a timer since we have the RTO timer
 		}
 	}
+	return nil
 }
 
 // Why is there no min already...

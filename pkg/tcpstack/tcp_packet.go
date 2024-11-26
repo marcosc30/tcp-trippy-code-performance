@@ -2,11 +2,14 @@ package tcpstack
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
-	"unsafe"
+	// "unsafe"
 )
 
-const MAX_TCP_PAYLOAD = 1400 - int(unsafe.Sizeof(TCPHeader{})) - 20 // 20 is size of IP header
+// TODO: CHANGE DONT BE AN IDIOT AND FORGET
+// const MAX_TCP_PAYLOAD = 1400 - int(unsafe.Sizeof(TCPHeader{})) - 20 // 20 is size of IP header
+const MAX_TCP_PAYLOAD = 1 // testing
 
 type TCPHeader struct {
 	SourcePort uint16
@@ -47,6 +50,11 @@ func ParseTCPHeader(data []byte) (*TCPHeader, []byte) {
 
 // Add these helper functions
 func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
+	if len(payload) > MAX_TCP_PAYLOAD {
+		fmt.Printf("Payload is too large, max is %d, got %d\n", MAX_TCP_PAYLOAD, len(payload))
+		return nil
+	}
+	
 	// 20 bytes for header
 	packet := make([]byte, 20+len(payload))
 
