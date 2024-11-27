@@ -321,6 +321,12 @@ func removePacket(earlyData []EarlyData, seqNum uint32) []EarlyData {
 func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
+	// Update send window
+	socket.snd.WND = header.WindowSize
+
+	fmt.Println("Recieved packet")
+	fmt.Println("WND: ", socket.snd.WND)
+
 	// 1. Process any data
 	if len(payload) > 0 {
 		handleData(ts, entry, header, payload)
@@ -328,15 +334,14 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 	
 	// 2. Process ACK if present and there are in flight packets
 	if header.Flags&TCP_ACK != 0 && len(socket.snd.inFlightPackets.packets) > 0 {
+		fmt.Println("Handling ack")
 		// Ignore old ACKs
 		if header.AckNum <= socket.snd.UNA {
 			return
 		}
 
-		// Update send window and last acknowledged sequence
-		socket.snd.WND = header.WindowSize
-		oldUNA := socket.snd.UNA
 		socket.snd.UNA = header.AckNum
+		oldUNA := socket.snd.UNA
 
 		// Remove acknowledged packets from in-flight list
 		socket.snd.inFlightPackets.mutex.Lock()
@@ -367,6 +372,9 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 		// If window has opened up, try sending more data
 		if socket.snd.WND > 0 {
 			socket.trySendData()
+		} else {
+			// If window is zero, send a probe
+			go socket.sendZeroWindowProbe()
 		}
 	}
 }

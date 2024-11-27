@@ -24,7 +24,7 @@ type NormalSocket struct {
 	lastActive    time.Time
 }
 
-const ZWP_RETRIES = 3
+const ZWP_RETRIES = 30
 const ZWP_PROBE_INTERVAL = 1 * time.Second
 
 func (ns *NormalSocket) GetSID() int {
@@ -227,6 +227,8 @@ func (socket *NormalSocket) sendZeroWindowProbe() error {
 	// Keep probing until either we get a non-zero window or hit retry limit
 	retries := 0
 	for socket.snd.WND == 0 && retries < ZWP_RETRIES {
+		fmt.Println("Sending zero window probe")
+		fmt.Println("WND: ", socket.snd.WND)
 		header := &TCPHeader{
 			SourcePort: socket.LocalPort,
 			DestPort:   socket.RemotePort,
@@ -243,7 +245,7 @@ func (socket *NormalSocket) sendZeroWindowProbe() error {
 			return err
 		}
 
-		socket.snd.NXT += 1
+		// socket.snd.NXT += 1
 		retries++
 
 		// Wait for response before sending next probe
