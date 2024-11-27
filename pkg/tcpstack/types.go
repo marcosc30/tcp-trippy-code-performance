@@ -128,6 +128,7 @@ type NormalSocket struct {
 	snd           SND
 	rcv           RCV
 	lastActive    time.Time
+	establishedChan chan struct{}
 }
 
 

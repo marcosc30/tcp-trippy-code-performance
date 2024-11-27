@@ -65,6 +65,10 @@ func (ns *NormalSocket) VClose() error {
 }
 
 func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, remotePort uint16) error {
+	fmt.Println("Connecting to: ", remoteAddress, remotePort)
+	// Add a connection established channel
+	connEstablished := make(chan struct{})
+	
 	ns.SID = tcpStack.generateSID()
 	ns.tcpStack = tcpStack
 	ns.RemoteAddress = remoteAddress
@@ -72,6 +76,7 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 	ns.LocalPort = tcpStack.allocatePort()
 	ns.SeqNum = generateInitialSeqNum()
 	ns.lastActive = time.Now()
+	ns.establishedChan = connEstablished  // Store the channel in the socket
 
 	// Initialize send/receive state
 	ns.snd = SND{
@@ -121,11 +126,23 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 		SeqNum:     ns.SeqNum,
 		DataOffset: 5,
 		Flags:      TCP_SYN,
-		WindowSize: ns.rcv.WND, // Advertise our receive window
+		WindowSize: ns.rcv.WND,
 	}
 
 	packet := serializeTCPPacket(header, nil)
-	return tcpStack.sendPacket(remoteAddress, packet)
+	err := tcpStack.sendPacket(remoteAddress, packet)
+	if err != nil {
+		fmt.Println("Error sending SYN packet: ", err)
+		return err
+	}
+
+	// Wait for connection to be established or timeout
+	select {
+	case <-connEstablished:
+		return nil
+	case <-time.After(HANDSHAKE_TIMEOUT): 
+		return fmt.Errorf("connection timeout")
+	}
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
@@ -158,6 +175,21 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 
 	// Try to send immediately
 	return socket.trySendData()
+}
+
+// Send RST packet
+func (socket *NormalSocket) sendRST() error {
+	header := &TCPHeader{
+		SourcePort: socket.LocalPort,
+		DestPort:   socket.RemotePort,
+		SeqNum:     socket.snd.NXT,
+		AckNum:     socket.rcv.NXT,
+		DataOffset: 5,
+		Flags:      TCP_RST,
+	}
+
+	packet := serializeTCPPacket(header, nil)
+	return socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 }
 
 func (socket *NormalSocket) trySendData() error {
@@ -255,6 +287,8 @@ func (socket *NormalSocket) sendDataPacket(data []byte) error {
 		WindowSize: uint16(socket.rcv.buf.Free()),
 	}
 
+	fmt.Println("Seq num: ", socket.snd.NXT)
+
 	packet := serializeTCPPacket(header, data)
 	err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 	if err != nil {
@@ -317,22 +351,30 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 	}
 	defer file.Close()
 
+	fmt.Println("Sending file")
+
 	// Read file into buffer
-	buffer := make([]byte, BUFFER_SIZE) // What if the file is larger than buffer size?
+	buffer := make([]byte, BUFFER_SIZE)
 	for {
-		_, err := file.Read(buffer)
-		if err != nil || err != io.EOF {
-			return err
-		}
-	
-
-		// Write buffer to socket
-		err2 := socket.VWrite(buffer)
-		if err2 != nil {
+		fmt.Println("Reading file into buffer")
+		n, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			// Only return if it's an error other than EOF
+			fmt.Println("Error reading file: ", err)
 			return err
 		}
 
-		
+		fmt.Println("n: ", n)
+
+		if n > 0 {
+			// Write what we actually read (might be less than BUFFER_SIZE)
+			err = socket.VWrite(buffer[:n])
+			if err != nil {
+				return err
+			}
+		}
+
+		// Break if we've reached the end of the file
 		if err == io.EOF {
 			break
 		}

@@ -89,6 +89,18 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 			}
 		}
 
+	case "rst":
+		if len(args) != 2 {
+			fmt.Println("Usage: rst <socket ID>")
+			return
+		}
+		socketID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Println("Invalid socket ID")
+			return
+		}
+		handleRSTSend(ts, socketID)
+
 	case "cl":
 		if len(args) != 2 {
 			fmt.Println("Usage: cl <socket ID>")
@@ -140,13 +152,12 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 func handleSend(ts *TCPStack, socketID int, data []byte) {
 	// ts.mutex.Lock()
 	// defer ts.mutex.Unlock()
-
-	if socketID < 0 || socketID >= len(ts.tcpTable) {
+	socket := ts.getSocketByID(socketID)
+	if socket == nil {
 		fmt.Println("Invalid socket ID")
 		return
 	}
 
-	socket := ts.getSocketByID(socketID)
 	if normalSocket, ok := socket.(*NormalSocket); ok {
 		err := normalSocket.VWrite(data)
 		if err != nil {
@@ -165,12 +176,12 @@ func handleRead(ts *TCPStack, socketID int, bytes int) {
 	// ts.mutex.Lock()
 	// defer ts.mutex.Unlock()
 
-	if socketID < 0 || socketID >= len(ts.tcpTable) {
+	socket := ts.getSocketByID(socketID)
+	if socket == nil {
 		fmt.Println("Invalid socket ID")
 		return
 	}
 
-	socket := ts.getSocketByID(socketID)
 	if normalSocket, ok := socket.(*NormalSocket); ok {
 		data := make([]byte, bytes)
 		n, err := normalSocket.VRead(data)
@@ -228,15 +239,12 @@ func handleList(ts *TCPStack) {
 }
 
 func handleClose(ts *TCPStack, socketID int) {
-	// ts.mutex.Lock()
-	// defer ts.mutex.Unlock()
-
-	if socketID < 0 || socketID >= len(ts.tcpTable) {
+	socket := ts.getSocketByID(socketID)
+	if socket == nil {
 		fmt.Println("Invalid socket ID")
 		return
 	}
 
-	socket := ts.getSocketByID(socketID)
 	if normalSocket, ok := socket.(*NormalSocket); ok {
 		err := normalSocket.VClose()
 		if err != nil {
@@ -245,6 +253,27 @@ func handleClose(ts *TCPStack, socketID int) {
 		}
 
 		fmt.Println("Closing connection")
+	} else {
+		fmt.Println("Invalid socket type")
+		return
+	}
+}
+
+func handleRSTSend(ts *TCPStack, socketID int) {
+	socket := ts.getSocketByID(socketID)
+	if socket == nil {
+		fmt.Println("Invalid socket ID")
+		return
+	}
+
+	if normalSocket, ok := socket.(*NormalSocket); ok {
+		err := normalSocket.sendRST()
+		if err != nil {
+			fmt.Printf("Send error: %v\n", err)
+			return
+		}
+
+		fmt.Println("Sent RST")
 	} else {
 		fmt.Println("Invalid socket type")
 		return

@@ -9,6 +9,7 @@ import (
 )
 
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
+	fmt.Println("Handling packet")
 	header, payload := ParseTCPHeader(packet)
 
 	entry, err := ts.VFindTableEntry(dstAddr, header.DestPort, srcAddr, header.SourcePort)
@@ -17,6 +18,14 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 	}
 
 	//fmt.Println("Handling packet for", entry.LocalAddress, entry.LocalPort, entry.RemoteAddress, entry.RemotePort, entry.State)
+
+	// Handle RST, immediately terminate connection for normal sockets
+	if header.Flags&TCP_RST != 0 && entry.State != TCP_LISTEN {
+		handleRST(ts, entry)
+		return nil
+	}
+
+	fmt.Println("Handling packet in state: ", entry.State)
 
 	switch entry.State {
 
@@ -189,6 +198,12 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket.snd.WND = header.WindowSize // Store peer's advertised window
 
 	entry.State = TCP_ESTABLISHED
+
+	// Signal that connection is established
+	if socket.establishedChan != nil {
+		close(socket.establishedChan)
+		socket.establishedChan = nil
+	}
 
 	// Send ACK
 	ackHeader := &TCPHeader{
@@ -435,6 +450,12 @@ func handleClosingACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 		// Remove the TCB
 		ts.VDeleteTableEntry(*entry)
 	}
+}
+
+func handleRST(ts *TCPStack, entry *TCPTableEntry) {
+	// Immediately terminate connection, skip close state machine
+	entry.State = TCP_CLOSED
+	ts.VDeleteTableEntry(*entry)
 }
 
 // Event                    State (A)   State (B)
