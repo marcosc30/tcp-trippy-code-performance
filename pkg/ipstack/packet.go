@@ -96,12 +96,12 @@ func UnmarshalPacket(data []byte) (IPPacket, error) {
 func ValidatePacket(packet IPPacket) bool {
 	// log.Println(packet.TTL, packet.Protocol)
 	if packet.TTL == 0 {
-		// log.Println("TTL is 0")
+		log.Println("TTL is 0")
 		return false
 	}
 
 	if packet.CalculateChecksum() != packet.Checksum {
-		// log.Println("Checksum is invalid")
+		log.Println("Checksum is invalid")
 		return false
 	}
 

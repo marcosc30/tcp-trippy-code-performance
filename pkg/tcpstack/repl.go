@@ -307,7 +307,7 @@ func sendFile(ts *TCPStack, filePath string, addr netip.Addr, port uint16) {
 	// Send the file
 	socket := ts.getSocketByID(socketID)
 	if normalSocket, ok := socket.(*NormalSocket); ok {
-		go normalSocket.VSendFile(filePath)
+		normalSocket.VSendFile(filePath)
 
 		fmt.Printf("Sending file\n")
 	} else {

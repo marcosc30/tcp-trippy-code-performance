@@ -146,6 +146,7 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
+	fmt.Printf("VWrite called with %d bytes\n", len(data))
 	// Check if connection is in the right state
 
 	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
@@ -193,6 +194,7 @@ func (socket *NormalSocket) sendRST() error {
 }
 
 func (socket *NormalSocket) trySendData() error {
+	fmt.Printf("trySendData called, buffer length: %d\n", socket.snd.buf.Length())
 	// Check if there's data to send
 	bufferSpace := socket.snd.buf.Length()
 	if bufferSpace == 0 {
@@ -233,6 +235,8 @@ func (socket *NormalSocket) trySendData() error {
 		if err != nil {
 			return err
 		}
+
+		fmt.Printf("Sending packet with %d bytes of data\n", n)
 	}
 
 	return nil
@@ -305,7 +309,6 @@ func (socket *NormalSocket) sendDataPacket(data []byte) error {
 		flags:    TCP_ACK,
 	})
 	socket.snd.inFlightPackets.mutex.Unlock()
-	fmt.Println("Added packet to in-flight queue")
 
 	socket.snd.NXT += uint32(len(data))
 	return nil

@@ -6,6 +6,7 @@ import (
 	"ip-rip-in-peace/pkg/lnxconfig"
 	"errors"
 	// "log/slog"
+	"fmt"
 )
 
 type IPStack struct {
@@ -56,6 +57,8 @@ func (s *IPStack) HandlePacket(packet *IPPacket) {
 
 
 func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
+	// fmt.Println("Received packet")
+	fmt.Println("Received packet from: ", packet.SourceIP, "to: ", packet.DestinationIP, "protocol: ", packet.Protocol)
 	// slog.Info("Received packet", "source", packet.SourceIP, "destination", packet.DestinationIP, "protocol", packet.Protocol, "ttl", packet.TTL)
 	// 1. Validate packet
 	if !ValidatePacket(*packet) {
@@ -83,6 +86,7 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 	// }
 	for _, iface := range ipstack.Interfaces {
 		if iface.Netmask.Contains(packet.DestinationIP) {
+			fmt.Println("Destination is on this network")
 			// Destination is on this network, send directly
 			nextIF := iface
 			packet.TTL--
@@ -92,6 +96,7 @@ func ReceivePacket(packet *IPPacket, ipstack *IPStack) {
 		}
 	}
 
+	fmt.Println("Forwarding packet")
 
 	// 4. Forward packet
 	interfaceName, nextHop := ipstack.ForwardingTable.NextHop(packet.DestinationIP)

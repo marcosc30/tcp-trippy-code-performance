@@ -1,11 +1,12 @@
 package tcpstack
 
 import (
+	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
 	"sync"
 	"time"
+
 	"github.com/smallnest/ringbuffer"
-	"ip-rip-in-peace/pkg/ipstack"
 )
 
 type TCPHeader struct {
@@ -27,7 +28,6 @@ const (
 	TCP_PSH = 1 << 3
 	TCP_ACK = 1 << 4
 )
-
 
 type TCPStack struct {
 	tcpTable []TCPTableEntry
@@ -66,7 +66,7 @@ type RCV struct {
 }
 
 type EarlyData struct {
-	data []byte
+	data   []byte
 	SeqNum uint32
 	Length uint16
 }
@@ -101,7 +101,6 @@ const (
 	TCP_CLOSED       TCPState = 10
 )
 
-
 type InFlightPacket struct {
 	data     []byte // This may be too much overhead to track the data of every in flight packet
 	SeqNum   uint32
@@ -131,9 +130,8 @@ type NormalSocket struct {
 	establishedChan chan struct{}
 }
 
-
 type ListenSocket struct {
-	SID int
+	SID       int
 	localPort uint16
 	// Channel for pending connections
 	acceptQueue chan *NormalSocket

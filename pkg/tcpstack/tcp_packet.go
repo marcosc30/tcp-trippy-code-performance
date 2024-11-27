@@ -44,7 +44,7 @@ func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
 	packet[13] = header.Flags
 
 	binary.BigEndian.PutUint16(packet[14:16], header.WindowSize)
-	binary.BigEndian.PutUint16(packet[16:18], 0) // Checksum 
+	binary.BigEndian.PutUint16(packet[16:18], 0) // Zero checksum initially
 	binary.BigEndian.PutUint16(packet[18:20], header.UrgentPtr)
 
 	// Add payload if any
@@ -55,10 +55,44 @@ func serializeTCPPacket(header *TCPHeader, payload []byte) []byte {
 	return packet
 }
 
-func computeChecksum(packet []byte) uint16 {
-	// TODO: Implement checksum computation
-	// Might have to change serializeTCPPacket to include IP pseudo header
-	return 0
+func computeChecksum(srcIP, dstIP []byte, protocol uint8, tcpPacket []byte) uint16 {
+	// Create pseudo header (12 bytes)
+	pseudoHeader := make([]byte, 12)
+	
+	// Source IP
+	copy(pseudoHeader[0:4], srcIP)
+	// Destination IP
+	copy(pseudoHeader[4:8], dstIP)
+	// Zero byte
+	pseudoHeader[8] = 0
+	// Protocol
+	pseudoHeader[9] = protocol
+	// TCP length (header + data)
+	binary.BigEndian.PutUint16(pseudoHeader[10:12], uint16(len(tcpPacket)))
+
+	// Combine pseudo header and TCP segment for checksum calculation
+	totalLength := len(pseudoHeader) + len(tcpPacket)
+	if totalLength%2 != 0 {
+		totalLength++
+	}
+	
+	checksumData := make([]byte, totalLength)
+	copy(checksumData[0:], pseudoHeader)
+	copy(checksumData[12:], tcpPacket)
+
+	// Calculate checksum
+	var sum uint32
+	for i := 0; i < len(checksumData)-1; i += 2 {
+		sum += uint32(binary.BigEndian.Uint16(checksumData[i:i+2]))
+	}
+
+	// Add carried over bits
+	for sum>>16 != 0 {
+		sum = (sum & 0xFFFF) + (sum >> 16)
+	}
+
+	// One's complement
+	return ^uint16(sum)
 }
 
 func generateInitialSeqNum() uint32 {
