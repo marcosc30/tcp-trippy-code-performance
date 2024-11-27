@@ -4,13 +4,6 @@ import (
 	"net/netip"
 )
 
-type ListenSocket struct {
-	SID int
-	localPort uint16
-	// Channel for pending connections
-	acceptQueue chan *NormalSocket
-}
-
 func VListen(tcpStack *TCPStack, localPort uint16) *ListenSocket {
 	ls := &ListenSocket{
 		SID: tcpStack.generateSID(),

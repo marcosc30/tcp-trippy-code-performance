@@ -8,8 +8,6 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-const MSL = 60 * time.Second
-
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
 	header, payload := ParseTCPHeader(packet)
 
@@ -55,7 +53,7 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		// 	handleFIN(ts, entry, header)
 		// } This would be a simultaneous close, which we don't support
 		if len(payload) > 0 {
-			handleData(ts, entry, header, payload)
+			handleEstablishedPacket(ts, entry, header, payload)
 		}
 		if header.Flags&TCP_ACK != 0 {
 			handleClosingACK(ts, entry, header)
@@ -65,7 +63,7 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		// 	handleEstablishedACK(ts, entry, header) // We may need this for retransmissions, but we should've sent all other packets already
 		// }
 		if len(payload) > 0 {
-			handleData(ts, entry, header, payload)
+			handleEstablishedPacket(ts, entry, header, payload)
 		}
 		if header.Flags&TCP_FIN != 0 {
 			handleFIN(ts, entry, header)
@@ -227,6 +225,10 @@ func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
+	fmt.Println("Data received")
+	fmt.Println("Header seq num: ", header.SeqNum)
+	fmt.Println("Socket rcv nxt: ", socket.rcv.NXT)
+
 	if header.SeqNum == socket.rcv.NXT {
 		// Next expected sequence number matches, process in order data
 		processInOrderData(socket, payload)
@@ -324,9 +326,6 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 	// Update send window
 	socket.snd.WND = header.WindowSize
 
-	fmt.Println("Recieved packet")
-	fmt.Println("WND: ", socket.snd.WND)
-
 	// 1. Process any data
 	if len(payload) > 0 {
 		handleData(ts, entry, header, payload)
@@ -334,7 +333,6 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 	
 	// 2. Process ACK if present and there are in flight packets
 	if header.Flags&TCP_ACK != 0 && len(socket.snd.inFlightPackets.packets) > 0 {
-		fmt.Println("Handling ack")
 		// Ignore old ACKs
 		if header.AckNum <= socket.snd.UNA {
 			return
@@ -398,7 +396,7 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	}
 
 	packet := serializeTCPPacket(ackHeader, nil)
-	ts.sendPacket(entry.RemoteAddress, packet)
+	ts.sendPacket(entry.RemoteAddress, packet)	
 
 	// Update state depending on current state
 	if entry.State == TCP_ESTABLISHED {
@@ -424,7 +422,7 @@ func handleClosingACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
 	// Update socket state
-	socket.rcv.NXT = header.SeqNum + 1
+	// socket.rcv.NXT = header.SeqNum + 1
 	socket.rcv.WND = header.WindowSize
 
 	// Update state depending on current state

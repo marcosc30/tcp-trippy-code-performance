@@ -5,86 +5,6 @@ import (
 	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
-	"sync"
-	"time"
-	"github.com/smallnest/ringbuffer"
-)
-
-// const BUFFER_SIZE uint16 = 65535
-const BUFFER_SIZE uint16 = 3
-	
-const RTO_MAX_RETRIES = 3
-
-type TCPStack struct {
-	tcpTable []TCPTableEntry
-	mutex    sync.Mutex
-	ipStack  *ipstack.IPStack
-	// rcv      RCV
-	// snd      SND
-	// snd and rcv should be on the level of socket connection, not the stack which is a per host/client level
-	nextPort uint16 // For ephemeral port allocation
-	nextSID  int
-}
-
-type SND struct {
-	buf             *ringbuffer.RingBuffer
-	UNA             uint32        // oldest unacknowledged sequence number
-	NXT             uint32        // next sequence number to be sent
-	WND             uint16        // peer's advertised window size
-	ISS             uint32        // initial send sequence number
-	calculatedRTO   time.Duration // RTO for that connection, calculated based on RTT
-	RTOtimer        *time.Timer   // Timer for RTO
-	SRTT            time.Duration // Smoothed RTT
-	RTTVAR          time.Duration // RTT variance
-	retransmissions int
-
-	// add the retransmission/in flight packet tracker, which could be a stack containing all of the segments (with each segment being data, the sequence number, length of segment, and the time it was last sent)
-	inFlightPackets InFlightPacketStack
-}
-
-type RCV struct {
-	buf *ringbuffer.RingBuffer
-	WND uint16
-	NXT uint32 // next expected sequence number
-	IRS uint32 // initial receive sequence number
-
-	earlyData []EarlyData
-}
-
-type EarlyData struct {
-	data []byte
-	SeqNum uint32
-	Length uint16
-}
-
-type TCPTableEntry struct {
-	LocalAddress  netip.Addr
-	LocalPort     uint16
-	RemoteAddress netip.Addr
-	RemotePort    uint16
-	State         TCPState
-	SocketStruct  Socket
-}
-
-type Socket interface {
-	VClose() error
-	GetSID() int
-}
-
-type TCPState int
-
-const (
-	TCP_LISTEN       TCPState = 0
-	TCP_SYN_SENT     TCPState = 1
-	TCP_SYN_RECEIVED TCPState = 2
-	TCP_ESTABLISHED  TCPState = 3
-	TCP_FIN_WAIT_1   TCPState = 4
-	TCP_FIN_WAIT_2   TCPState = 5
-	TCP_CLOSING      TCPState = 6
-	TCP_TIME_WAIT    TCPState = 7
-	TCP_CLOSE_WAIT   TCPState = 8
-	TCP_LAST_ACK     TCPState = 9
-	TCP_CLOSED       TCPState = 10
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
@@ -94,18 +14,6 @@ func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
 		tcpTable: make([]TCPTableEntry, 0),
 		ipStack:  ipStack,
 		nextPort: 49152, // Start of ephemeral port range
-		// rcv: RCV{
-		// 	buf: ringbuffer.New(int(BUFFER_SIZE)),
-		// 	NXT: 0,
-		// 	IRS: 0,
-		// },
-		// snd: SND{
-		// 	buf: ringbuffer.New(int(BUFFER_SIZE)),
-		// 	UNA: 0,
-		// 	NXT: 0,
-		// 	WND: 0,
-		// 	ISS: 0,
-		// },
 		nextSID: 0,
 	}
 

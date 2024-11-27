@@ -4,31 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
-	// "unsafe"
-)
-
-// TODO: CHANGE DONT BE AN IDIOT AND FORGET
-// const MAX_TCP_PAYLOAD = 1400 - int(unsafe.Sizeof(TCPHeader{})) - 20 // 20 is size of IP header
-const MAX_TCP_PAYLOAD = 2 // testing
-
-type TCPHeader struct {
-	SourcePort uint16
-	DestPort   uint16
-	SeqNum     uint32
-	AckNum     uint32
-	DataOffset uint8 // 4 bits
-	Flags      uint8 // 8 bits
-	WindowSize uint16
-	Checksum   uint16
-	UrgentPtr  uint16
-}
-
-const (
-	TCP_FIN = 1 << 0
-	TCP_SYN = 1 << 1
-	TCP_RST = 1 << 2
-	TCP_PSH = 1 << 3
-	TCP_ACK = 1 << 4
 )
 
 func ParseTCPHeader(data []byte) (*TCPHeader, []byte) {

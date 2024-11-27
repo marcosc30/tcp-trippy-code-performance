@@ -2,29 +2,8 @@ package tcpstack
 
 import (
 	"fmt"
-	"sync"
 	"time"
 )
-
-const MIN_RTO = 30 * time.Second
-
-// Here, we will define our logic for retransmission of packets, including RTO calculations
-
-type InFlightPacket struct {
-	data     []byte // This may be too much overhead to track the data of every in flight packet
-	SeqNum   uint32
-	Length   uint16
-	timeSent time.Time
-	flags    uint8
-	//CalculatedRTO time.Duration // This should be done per connection, not per packet
-}
-
-type InFlightPacketStack struct {
-	packets []InFlightPacket
-	mutex   sync.Mutex
-}
-
-
 
 func (socket *NormalSocket) manageRetransmissions() {
 	for {
@@ -47,54 +26,43 @@ func (socket *NormalSocket) manageRetransmissions() {
 
 func (socket *NormalSocket) retransmitPacket() error {
 	// Should be called whenever RTO timer expires
-
-	socket.snd.inFlightPackets.mutex.Lock()
-	defer socket.snd.inFlightPackets.mutex.Unlock()
-	inflightpackets := socket.snd.inFlightPackets.packets
-
-	for _, packet := range inflightpackets {
-		if packet.SeqNum >= socket.snd.UNA {
-			// This is the first unacked segment
-
-			// Check if we have reached max retransmissions
-			if socket.snd.retransmissions > RTO_MAX_RETRIES {
-				return fmt.Errorf("max retransmissions reached")
-			}
-
-			// Create header for retransmission
-			header := &TCPHeader{
-				SourcePort: socket.LocalPort,
-				DestPort:   socket.RemotePort,
-				SeqNum:     packet.SeqNum,
-				AckNum:     socket.rcv.NXT,
-				DataOffset: 5,
-				Flags:      packet.flags,
-				WindowSize: uint16(socket.rcv.buf.Free()),
-			}
-
-			// Retransmit the packet
-			tcpPacket := serializeTCPPacket(header, packet.data)
-			if err := socket.tcpStack.sendPacket(socket.RemoteAddress, tcpPacket); err != nil {
-				return err
-			}
-
-			// Increment retransmissions
-			socket.snd.retransmissions++
-
-			// Double the RTO timer
-			socket.snd.calculatedRTO *= 2
-			// Enforce maximum RTO
-			if socket.snd.calculatedRTO > 60*time.Second {
-				socket.snd.calculatedRTO = 60 * time.Second
-			}
-			socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
-
-			//socket.snd.inFlightPackets.packets = inflightpackets[i:]
-
-			break
-
-		}
+	packet := socket.getFirstUnackedPacket()
+	if packet == nil {
+		return nil // No packets to retransmit
 	}
+
+	// Check if we have reached max retransmissions
+	if socket.snd.retransmissions > RTO_MAX_RETRIES {
+		return fmt.Errorf("max retransmissions reached")
+	}
+
+	// Create header for retransmission
+	header := &TCPHeader{
+		SourcePort: socket.LocalPort,
+		DestPort:   socket.RemotePort,
+		SeqNum:     packet.SeqNum,
+		AckNum:     socket.rcv.NXT,
+		DataOffset: 5,
+		Flags:      packet.flags,
+		WindowSize: uint16(socket.rcv.buf.Free()),
+	}
+
+	// Retransmit the packet
+	tcpPacket := serializeTCPPacket(header, packet.data)
+	if err := socket.tcpStack.sendPacket(socket.RemoteAddress, tcpPacket); err != nil {
+		return err
+	}
+
+	// Increment retransmissions
+	socket.snd.retransmissions++
+
+	// Double the RTO timer
+	socket.snd.calculatedRTO *= 2
+	// Enforce maximum RTO
+	if socket.snd.calculatedRTO > 60*time.Second {
+		socket.snd.calculatedRTO = 60 * time.Second
+	}
+	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
 
 	return nil
 }
@@ -147,4 +115,18 @@ func (socket *NormalSocket) computeRTO(ackNum uint32, timeReceived time.Time) {
 	// I don't think this last bit is needed since we should reset it separately whenever we compute RTO in functions that do it
 	// But given that timers should reset on recalculation, it may be smart to reset it within this function
 
+}
+
+// getFirstUnackedPacket returns the first unacknowledged packet from the inflight packets
+// Returns nil if no unacked packets are found
+func (socket *NormalSocket) getFirstUnackedPacket() *InFlightPacket {
+	socket.snd.inFlightPackets.mutex.Lock()
+	defer socket.snd.inFlightPackets.mutex.Unlock()
+
+	for _, packet := range socket.snd.inFlightPackets.packets {
+		if packet.SeqNum >= socket.snd.UNA {
+			return &packet
+		}
+	}
+	return nil
 }

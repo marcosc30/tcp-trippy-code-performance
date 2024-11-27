@@ -10,23 +10,6 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-type NormalSocket struct {
-	SID           int
-	LocalAddress  netip.Addr
-	LocalPort     uint16
-	RemoteAddress netip.Addr
-	RemotePort    uint16
-	SeqNum        uint32
-	AckNum        uint32
-	tcpStack      *TCPStack
-	snd           SND
-	rcv           RCV
-	lastActive    time.Time
-}
-
-const ZWP_RETRIES = 30
-const ZWP_PROBE_INTERVAL = 1 * time.Second
-
 func (ns *NormalSocket) GetSID() int {
 	return ns.SID
 }
@@ -39,6 +22,7 @@ func (ns *NormalSocket) VClose() error {
 	}
 
 	// Send FIN packet
+	fmt.Println("ack num: ", ns.rcv.NXT)
 	header := &TCPHeader{
 		SourcePort: ns.LocalPort,
 		DestPort:   ns.RemotePort,
@@ -59,6 +43,7 @@ func (ns *NormalSocket) VClose() error {
 		flags:    TCP_FIN,
 	})
 	ns.snd.inFlightPackets.mutex.Unlock()
+	fmt.Println("unlocked packets mutex")
 
 	ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
 
@@ -144,8 +129,6 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
-	fmt.Println("VWrite")
-
 	// Check if connection is in the right state
 
 	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
@@ -153,6 +136,7 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 		fmt.Println("Error finding table entry: ", err)
 		return err
 	}
+	fmt.Println("Table entry: ", table_entry)
 
 	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
 		return fmt.Errorf("connection not established")
@@ -321,23 +305,6 @@ func (socket *NormalSocket) VRead(data []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
-	// Optional, send window update
-	// TODO (ask in milestone meeting): Should we send a window update?
-	// I like this, but not implemented in reference
-
-	// header := &TCPHeader{
-	// 	SourcePort: socket.LocalPort,
-	// 	DestPort:   socket.RemotePort,
-	// 	SeqNum:     socket.snd.NXT,
-	// 	AckNum:     socket.rcv.NXT,
-	// 	DataOffset: 5,
-	// 	Flags:      TCP_ACK,
-	// 	WindowSize: uint16(socket.rcv.buf.Free()), // Current receive window
-	// }
-
-	// packet := serializeTCPPacket(header, nil)
-	// socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 
 	return n, nil
 }
