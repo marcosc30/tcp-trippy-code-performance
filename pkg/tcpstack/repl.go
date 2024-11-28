@@ -81,11 +81,12 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 		fmt.Println("Retransmission info:")
 		for _, entry := range ts.tcpTable {
 			if normalSocket, ok := entry.SocketStruct.(*NormalSocket); ok {
-				fmt.Printf("Socket %d: RTO %v, SRTT %v, RTTVAR %v\n",
+				fmt.Printf("Socket %d: RTO %v, SRTT %v, RTTVAR %v, Receiving Buffer %v\n",
 					entry.SocketStruct.GetSID(),
 					normalSocket.snd.calculatedRTO,
 					normalSocket.snd.SRTT,
-					normalSocket.snd.RTTVAR)
+					normalSocket.snd.RTTVAR,
+					normalSocket.rcv.buf.Length())
 			}
 		}
 

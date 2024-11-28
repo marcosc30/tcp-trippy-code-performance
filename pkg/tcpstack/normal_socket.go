@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"os"
 	"time"
-
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -162,20 +161,24 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 
 	// Write data to send buffer, break into max size of space left in buffer and continue to send until all sent
 
-	_, err = socket.snd.buf.Write(data)
-	if err != nil {
-		return err
+	for len(data) > 0 {
+		// Write data to send buffer
+		n, err := socket.snd.buf.TryWrite(data)
+		if err != nil && err != ringbuffer.ErrIsFull && err != ringbuffer.ErrTooMuchDataToWrite {
+			return err
+		}
+
+		// Try to send data
+		err = socket.trySendData()
+		if err != nil {
+			return err
+		}
+
+		// Update data to send
+		data = data[n:]
 	}
 
-	// What is the behavior if there is more data than the send buffer can handle
-
-	// Start the RTO timer
-	socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
-
-	// We start the RTO timer here so that it is per write, not per packet
-
-	// Try to send immediately
-	return socket.trySendData()
+	return nil
 }
 
 // Send RST packet
@@ -194,21 +197,12 @@ func (socket *NormalSocket) sendRST() error {
 }
 
 func (socket *NormalSocket) trySendData() error {
-	fmt.Printf("trySendData called, buffer length: %d\n", socket.snd.buf.Length())
-	// Check if there's data to send
-	bufferSpace := socket.snd.buf.Length()
-	if bufferSpace == 0 {
-		return nil
-	}
-
-	// If window is zero, send a probe and return
-	if socket.snd.WND == 0 {
-		return socket.sendZeroWindowProbe()
-	}
-
-	// Keep sending packets while we have data and window space
+	// Changed this to a for loop to send larger packets, may need to revise this
 	for socket.snd.buf.Length() > 0 {
-		// Calculate available window
+		// bufferSpace := socket.snd.buf.Length()
+
+		// Free window space is size of receiver buffer - amount of data in flight
+		// Calculate data in flight using pointers
 		dataInFlight := socket.snd.NXT - socket.snd.UNA
 		freeWindowSpace := socket.snd.WND - uint16(dataInFlight)
 
@@ -216,29 +210,62 @@ func (socket *NormalSocket) trySendData() error {
 		// if bufferSpace == 0{ //&& //len(socket.snd.inFlightPackets) == 0 { this is not needed, since retransmissions should be handled separately in a go routine
 		// 	// But the problem of not reading acks while trying to send data is bad because if we have a lot in our buffer we won't be able to read acks until we're done
 		// 	// Which is not good and will lead to a lot of retransmissions
-		// If no free window space, return (will be called again when ACK received)
-		if freeWindowSpace <= 0 {
-			return nil
-		}
 
-		// Calculate how much we can send
-		maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
-		sendData := make([]byte, maxSendSize)
-		
-		n, err := socket.snd.buf.Read(sendData)
-		if err != nil {
-			return err
-		}
 
-		// Send the packet
-		err = socket.sendDataPacket(sendData[:n])
-		if err != nil {
-			return err
-		}
+		if socket.snd.WND > 0 {
+			if freeWindowSpace <= 0 {
+				continue
+				// return nil
+			}
+			maxSendSize := min(int(freeWindowSpace), MAX_TCP_PAYLOAD)
 
-		fmt.Printf("Sending packet with %d bytes of data\n", n)
+			sendData := make([]byte, maxSendSize)
+			//  socket.snd.buf.SetBlocking(true) // We don't want blocking here, since we should never be trying to send more than the buffer has
+			n, err := socket.snd.buf.Read(sendData)
+			// This will return an error if there's nothing in the buffer
+			if err != nil {
+				return err
+			}
+
+			header := &TCPHeader{
+				SourcePort: socket.LocalPort,
+				DestPort:   socket.RemotePort,
+				SeqNum:     socket.snd.NXT,
+				AckNum:     socket.rcv.NXT,
+				DataOffset: 5,
+				Flags:      TCP_ACK,
+				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+			}
+
+			// Send data packet
+			packet := serializeTCPPacket(header, sendData[:n])
+			err = socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
+			if err != nil {
+				return err
+			}
+
+			// Add it to the inflight packets
+			socket.snd.inFlightPackets.mutex.Lock()
+			socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+				data:     sendData[:n],
+				SeqNum:   socket.snd.NXT,
+				Length:   uint16(n),
+				timeSent: time.Now(),
+				flags:    TCP_ACK,
+			})
+			socket.snd.inFlightPackets.mutex.Unlock()
+
+			// Update send buffer sequence number
+			socket.snd.NXT += uint32(n)
+
+		} else if socket.snd.WND == 0 {
+			// Send zero window probe
+			err := socket.sendZeroWindowProbe()
+			if err != nil {
+				return err
+			}
+		}
 	}
-
 	return nil
 }
 
@@ -246,6 +273,9 @@ func (socket *NormalSocket) trySendData() error {
 func (socket *NormalSocket) sendZeroWindowProbe() error {
 	// Keep probing until either we get a non-zero window or hit retry limit
 	retries := 0
+	next_byte_data := make([]byte, 1)
+	socket.snd.buf.TryRead(next_byte_data) // Should always have data or we shouldn't be here
+
 	for socket.snd.WND == 0 && retries < ZWP_RETRIES {
 		fmt.Println("Sending zero window probe")
 		fmt.Println("WND: ", socket.snd.WND)
@@ -259,7 +289,9 @@ func (socket *NormalSocket) sendZeroWindowProbe() error {
 			WindowSize: uint16(socket.rcv.buf.Free()),
 		}
 
-		packet := serializeTCPPacket(header, []byte{0})
+
+		// We read the byte from the buffer to send it
+		packet := serializeTCPPacket(header, next_byte_data)
 		err := socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 		if err != nil {
 			return err
@@ -275,6 +307,9 @@ func (socket *NormalSocket) sendZeroWindowProbe() error {
 	if retries >= ZWP_RETRIES {
 		return fmt.Errorf("zero window probe max retries exceeded")
 	}
+
+	socket.snd.NXT++
+	fmt.Println("Window size: ", socket.snd.WND)
 
 	return nil
 }
@@ -342,6 +377,9 @@ func (socket *NormalSocket) VRead(data []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// Update window
+	socket.rcv.WND = uint16(socket.rcv.buf.Free())
 
 	return n, nil
 }

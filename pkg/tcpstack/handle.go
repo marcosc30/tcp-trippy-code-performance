@@ -9,7 +9,6 @@ import (
 )
 
 func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) error {
-	fmt.Println("Handling packet")
 	header, payload := ParseTCPHeader(packet)
 
 	entry, err := ts.VFindTableEntry(dstAddr, header.DestPort, srcAddr, header.SourcePort)
@@ -25,13 +24,12 @@ func (ts *TCPStack) HandlePacket(srcAddr, dstAddr netip.Addr, packet []byte) err
 		return nil
 	}
 
-	fmt.Println("Handling packet in state: ", entry.State)
+	//fmt.Println("Handling packet in state: ", entry.State)
 
 	switch entry.State {
 
 	// Handshake
 	case TCP_LISTEN:
-		fmt.Println("TCP_LISTEN")
 		if header.Flags&TCP_SYN != 0 {
 			// Handle incoming connection
 			handleSYN(ts, entry, header, srcAddr)
@@ -240,14 +238,14 @@ func handleACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload []byte) {
 	socket := entry.SocketStruct.(*NormalSocket)
 
-	fmt.Println("Data received")
-	fmt.Println("Header seq num: ", header.SeqNum)
-	fmt.Println("Socket rcv nxt: ", socket.rcv.NXT)
+	// fmt.Println("Data received")
+	// fmt.Println("Header seq num: ", header.SeqNum)
+	// fmt.Println("Socket rcv nxt: ", socket.rcv.NXT)
 
 	if header.SeqNum == socket.rcv.NXT {
 		// Next expected sequence number matches, process in order data
 		processInOrderData(socket, payload)
-	} else if header.SeqNum > socket.rcv.NXT {
+	} else if header.SeqNum != socket.rcv.NXT { // != so that we take into account repeated data, which will be the case for retransmissions and ZWP
 		fmt.Println("Out of order packet received")
 		// Store out of order data
 		socket.rcv.earlyData = append(socket.rcv.earlyData, EarlyData{
@@ -381,14 +379,6 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 
 		// Reset retransmission count on successful ACK
 		socket.snd.retransmissions = 0
-		
-		// If window has opened up, try sending more data
-		if socket.snd.WND > 0 {
-			socket.trySendData()
-		} else {
-			// If window is zero, send a probe
-			go socket.sendZeroWindowProbe()
-		}
 	}
 }
 

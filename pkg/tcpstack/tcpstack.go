@@ -108,11 +108,11 @@ func (ts *TCPStack) sendPacket(dstAddr netip.Addr, data []byte) error {
 	// Insert TCP checksum into packet
 	binary.BigEndian.PutUint16(data[16:18], checksum)
 	
-	fmt.Printf("Sending TCP packet:\n")
-	fmt.Printf("  Length: %d\n", len(data))
-	fmt.Printf("  Source IP: %v\n", srcIP)
-	fmt.Printf("  Dest IP: %v\n", dstAddr.AsSlice())
-	fmt.Printf("  First 20 bytes: %v\n", data[:20])
+	// fmt.Printf("Sending TCP packet:\n")
+	// fmt.Printf("  Length: %d\n", len(data))
+	// fmt.Printf("  Source IP: %v\n", srcIP)
+	// fmt.Printf("  Dest IP: %v\n", dstAddr.AsSlice())
+	// fmt.Printf("  First 20 bytes: %v\n", data[:20])
 	
 	return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
 }
