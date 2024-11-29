@@ -396,6 +396,9 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 
 	fmt.Println("Sending file")
 
+	// Track total bytes sent
+	var totalBytesSent int64 = 0
+
 	// Read file into buffer
 	buffer := make([]byte, BUFFER_SIZE)
 	for {
@@ -405,6 +408,7 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 			fmt.Println("Error reading file: ", err)
 			return err
 		}
+		totalBytesSent += int64(n)
 
 		if n > 0 {
 			// Write what we actually read
@@ -420,7 +424,8 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 		}
 	}
 
-	fmt.Println("File sent, closing connection")
+	fmt.Printf("Sent %d total bytes\n", totalBytesSent)
+	fmt.Println("Closing connection")
 	
 	// Close the connection after sending the file
 	err = socket.VClose()
@@ -438,6 +443,9 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 		return err
 	}
 	defer file.Close()
+
+	// Track total bytes received
+	var totalBytesReceived int64 = 0
 
 	buffer := make([]byte, BUFFER_SIZE)
 	for {
@@ -460,6 +468,7 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 			}
 			break
 		}
+		totalBytesReceived += int64(n)
 
 		if n > 0 {
 			_, err = file.Write(buffer[:n])
@@ -469,8 +478,9 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 		}
 	}
 
-	// Finish up
-	fmt.Println("File received, closing connection")
+	fmt.Printf("Received %d total bytes\n", totalBytesReceived)
+	fmt.Println("Closing connection")
+	
 	err = socket.VClose()
 	if err != nil {
 		return fmt.Errorf("error closing connection after file transfer: %v", err)
