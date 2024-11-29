@@ -92,7 +92,7 @@ func computeChecksum(srcIP, dstIP []byte, protocol uint8, tcpPacket []byte) uint
 	}
 
 	// One's complement
-	return ^uint16(sum)
+	return ^uint16(sum) 
 }
 
 func generateInitialSeqNum() uint32 {

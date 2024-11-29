@@ -7,8 +7,8 @@ import (
 
 // TODO: CHANGE DONT BE AN IDIOT AND FORGET
 
-// const BUFFER_SIZE uint16 = 65535
-const BUFFER_SIZE uint16 = 3
+const BUFFER_SIZE uint16 = 65535
+// const BUFFER_SIZE uint16 = 3
 	
 const RTO_MAX_RETRIES = 3
 

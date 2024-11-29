@@ -107,6 +107,7 @@ type InFlightPacket struct {
 	Length   uint16
 	timeSent time.Time
 	flags    uint8
+	windowFlags uint16
 	//CalculatedRTO time.Duration // This should be done per connection, not per packet
 }
 

@@ -44,7 +44,7 @@ func (socket *NormalSocket) retransmitPacket() error {
 		AckNum:     socket.rcv.NXT,
 		DataOffset: 5,
 		Flags:      packet.flags,
-		WindowSize: uint16(socket.rcv.buf.Free()),
+		WindowSize: packet.windowFlags,// uint16(socket.rcv.buf.Free()),
 	}
 
 	// Retransmit the packet
