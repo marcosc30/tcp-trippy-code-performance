@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"ip-rip-in-peace/pkg/ipstack"
 	"net/netip"
-	"encoding/binary"
+	// "encoding/binary"
 )
 
 func InitTCPStack(ipStack *ipstack.IPStack) *TCPStack {
@@ -91,28 +91,29 @@ func (ts *TCPStack) VFindTableEntry(localAddress netip.Addr, localPort uint16, r
 
 func (ts *TCPStack) sendPacket(dstAddr netip.Addr, data []byte) error {
 	// Get source IP from the first interface
-	var srcIP []byte
-	for _, iface := range ts.ipStack.Interfaces {
-		srcIP = iface.IPAddr.AsSlice()
-		break
-	}
+	// var srcIP []byte
+	// for _, iface := range ts.ipStack.Interfaces {
+	// 	srcIP = iface.IPAddr.AsSlice()
+	// 	break
+	// }
 	
-	// Calculate TCP checksum with pseudo header
-	checksum := computeChecksum(
-		srcIP,
-		dstAddr.AsSlice(),
-		uint8(ipstack.TCP_PROTOCOL),
-		data,
-	)
+	// // Calculate TCP checksum with pseudo header
+	// checksum := computeChecksum(
+	// 	srcIP,
+	// 	dstAddr.AsSlice(),
+	// 	uint8(ipstack.TCP_PROTOCOL),
+	// 	data,
+	// )
 	
-	// Insert TCP checksum into packet
-	binary.BigEndian.PutUint16(data[16:18], checksum)
+	// // Insert TCP checksum into packet
+	// binary.BigEndian.PutUint16(data[16:18], checksum)
 	
 	// fmt.Printf("Sending TCP packet:\n")
 	// fmt.Printf("  Length: %d\n", len(data))
 	// fmt.Printf("  Source IP: %v\n", srcIP)
 	// fmt.Printf("  Dest IP: %v\n", dstAddr.AsSlice())
 	// fmt.Printf("  First 20 bytes: %v\n", data[:20])
+
 	
 	return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
 }

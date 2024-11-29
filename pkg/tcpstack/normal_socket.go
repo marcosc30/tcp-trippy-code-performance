@@ -140,12 +140,13 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 	case <-connEstablished:
 		return nil
 	case <-time.After(HANDSHAKE_TIMEOUT): 
+		// Remove socket entry
+		tcpStack.VDeleteTableEntry(entry)
 		return fmt.Errorf("connection timeout")
 	}
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
-	fmt.Printf("VWrite called with %d bytes\n", len(data))
 	// Check if connection is in the right state
 
 	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
@@ -153,7 +154,6 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 		fmt.Println("Error finding table entry: ", err)
 		return err
 	}
-	fmt.Println("Table entry: ", table_entry)
 
 	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
 		return fmt.Errorf("connection not established")
@@ -235,7 +235,9 @@ func (socket *NormalSocket) trySendData() error {
 				DataOffset: 5,
 				Flags:      TCP_ACK,
 				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+				Checksum:   0,
 			}
+
 
 			// Send data packet
 			packet := serializeTCPPacket(header, sendData[:n])
@@ -394,21 +396,22 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 
 	fmt.Println("Sending file")
 
+	// Track total bytes sent
+	var totalBytesSent int64 = 0
+
 	// Read file into buffer
 	buffer := make([]byte, BUFFER_SIZE)
 	for {
-		fmt.Println("Reading file into buffer")
 		n, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
 			// Only return if it's an error other than EOF
 			fmt.Println("Error reading file: ", err)
 			return err
 		}
-
-		fmt.Println("n: ", n)
+		totalBytesSent += int64(n)
 
 		if n > 0 {
-			// Write what we actually read (might be less than BUFFER_SIZE)
+			// Write what we actually read
 			err = socket.VWrite(buffer[:n])
 			if err != nil {
 				return err
@@ -421,7 +424,14 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 		}
 	}
 
-	fmt.Println("File sent")
+	fmt.Printf("Sent %d total bytes\n", totalBytesSent)
+	fmt.Println("Closing connection")
+	
+	// Close the connection after sending the file
+	err = socket.VClose()
+	if err != nil {
+		return fmt.Errorf("error closing connection after file transfer: %v", err)
+	}
 
 	return nil
 }
@@ -432,27 +442,49 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 	if err != nil {
 		return err
 	}
-
 	defer file.Close()
+
+	// Track total bytes received
+	var totalBytesReceived int64 = 0
 
 	buffer := make([]byte, BUFFER_SIZE)
 	for {
+		// Check if connection is closed before each read
+		table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
+		if err != nil {
+			return err
+		}
+
+		// If we're in CLOSE_WAIT state, it means we've received FIN from the sender
+		if table_entry.State == TCP_CLOSE_WAIT {
+			break
+		}
+
 		n, err := socket.VRead(buffer)
 		if err != nil {
-			return err
-		}
-
-		_, err = file.Write(buffer[:n])
-		if err != nil {
-			return err
-		}
-
-		if n < int(BUFFER_SIZE) {
+			// Only return if it's not a connection closing error
+			if err.Error() != "connection not established" {
+				return err
+			}
 			break
+		}
+		totalBytesReceived += int64(n)
+
+		if n > 0 {
+			_, err = file.Write(buffer[:n])
+			if err != nil {
+				return err
+			}
 		}
 	}
 
-	fmt.Println("File received")
+	fmt.Printf("Received %d total bytes\n", totalBytesReceived)
+	fmt.Println("Closing connection")
+	
+	err = socket.VClose()
+	if err != nil {
+		return fmt.Errorf("error closing connection after file transfer: %v", err)
+	}
 
 	return nil
 }
