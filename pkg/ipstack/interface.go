@@ -51,7 +51,7 @@ func InterfaceListen(i *Interface, stack *IPStack) {
 			continue
 		}
 
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, 1040)
 		n, _, err := i.Socket.ReadFromUDP(buffer)
 		if err != nil {
 			// Handle error

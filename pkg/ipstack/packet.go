@@ -26,15 +26,14 @@ const (
 )
 
 // Creates a new packet struct with the given source, destination, ttl, protocol, and payload
-func CreatePacket(source_ip netip.Addr, destination_ip netip.Addr, ttl uint8, protocol Protocol, payload string) (IPPacket, error) {
+func CreatePacket(source_ip netip.Addr, destination_ip netip.Addr, ttl uint8, protocol Protocol, payload []byte) (IPPacket, error) {
 	packet := IPPacket{
 		SourceIP:      source_ip,
 		DestinationIP: destination_ip,
 		TTL:           ttl,
 		Protocol:      protocol,
-		Payload:       []byte(payload),
+		Payload:       payload,
 	}
-
 	packet.Checksum = packet.CalculateChecksum()
 
 	return packet, nil

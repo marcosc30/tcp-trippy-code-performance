@@ -29,7 +29,7 @@ func (s *IPStack) SendIP(dst netip.Addr, protocol Protocol, ttl uint8, data []by
 	nextIF := s.Interfaces[interfaceName]
 
 	// We increment TTL by one to counter the decrement in ReceivePacket
-	packet, err := CreatePacket(nextIF.IPAddr, dst, ttl, protocol, string(data))
+	packet, err := CreatePacket(nextIF.IPAddr, dst, ttl, protocol, data)
 	if err != nil {
 		return err
 	}

@@ -145,7 +145,6 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 }
 
 func (socket *NormalSocket) VWrite(data []byte) error {
-	fmt.Printf("VWrite called with %d bytes\n", len(data))
 	// Check if connection is in the right state
 
 	table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
@@ -153,7 +152,6 @@ func (socket *NormalSocket) VWrite(data []byte) error {
 		fmt.Println("Error finding table entry: ", err)
 		return err
 	}
-	fmt.Println("Table entry: ", table_entry)
 
 	if table_entry.State != TCP_ESTABLISHED && table_entry.State != TCP_CLOSE_WAIT {
 		return fmt.Errorf("connection not established")
@@ -235,7 +233,9 @@ func (socket *NormalSocket) trySendData() error {
 				DataOffset: 5,
 				Flags:      TCP_ACK,
 				WindowSize: uint16(socket.rcv.buf.Free()), // Our current receive window
+				Checksum:   0,
 			}
+
 
 			// Send data packet
 			packet := serializeTCPPacket(header, sendData[:n])
@@ -404,8 +404,6 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 			fmt.Println("Error reading file: ", err)
 			return err
 		}
-
-		fmt.Println("n: ", n)
 
 		if n > 0 {
 			// Write what we actually read (might be less than BUFFER_SIZE)
