@@ -172,6 +172,25 @@ func handleSYN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, srcAddr ne
 		WindowSize: newSocket.rcv.WND, // Advertise our receive window
 	}
 
+	// We figure out if inflight packets is empty here to know if we should reset the RTO timer
+	if len(newSocket.snd.inFlightPackets.packets) == 0 {
+		newSocket.snd.RTOtimer.Reset(newSocket.snd.calculatedRTO)
+	}
+
+	// Add it to inflight packets
+	newSocket.snd.inFlightPackets.mutex.Lock()
+	newSocket.snd.inFlightPackets.packets = append(newSocket.snd.inFlightPackets.packets, InFlightPacket{
+		SeqNum:      synAckHeader.SeqNum,
+		Length:      0,
+		timeSent:    time.Now(),
+		flags:       synAckHeader.Flags,
+		windowFlags: synAckHeader.WindowSize,
+	})
+	newSocket.snd.inFlightPackets.mutex.Unlock()
+
+	// Reset retransmission timer
+	newSocket.snd.RTOtimer.Reset(newSocket.snd.calculatedRTO)
+
 	packet := serializeTCPPacket(synAckHeader, nil)
 	ts.sendPacket(srcAddr, packet)
 
@@ -213,6 +232,22 @@ func handleSYNACK(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 		Flags:      TCP_ACK,
 		WindowSize: socket.rcv.WND, // Advertise our receive window
 	}
+
+	// We figure out if inflight packets is empty here to know if we should reset the RTO timer
+	if len(socket.snd.inFlightPackets.packets) == 0 {
+		socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+	}
+
+	// Add it to inflight packets
+	socket.snd.inFlightPackets.mutex.Lock()
+	socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+		SeqNum:      ackHeader.SeqNum,
+		Length:      0,
+		timeSent:    time.Now(),
+		flags:       ackHeader.Flags,
+		windowFlags: ackHeader.WindowSize,
+	})
+	socket.snd.inFlightPackets.mutex.Unlock()
 
 	packet := serializeTCPPacket(ackHeader, nil)
 	ts.sendPacket(entry.RemoteAddress, packet)
@@ -264,6 +299,22 @@ func handleData(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader, payload [
 			Flags:      TCP_ACK,
 			WindowSize: socket.rcv.WND,
 		}
+
+		// We figure out if inflight packets is empty here to know if we should reset the RTO timer
+		if len(socket.snd.inFlightPackets.packets) == 0 {
+			socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+		}
+
+		// Add it to inflight packets
+		socket.snd.inFlightPackets.mutex.Lock()
+		socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+			SeqNum:      ackHeader.SeqNum,
+			Length:      0,
+			timeSent:    time.Now(),
+			flags:       ackHeader.Flags,
+			windowFlags: ackHeader.WindowSize,
+		})
+		socket.snd.inFlightPackets.mutex.Unlock()
 
 		packet := serializeTCPPacket(ackHeader, nil)
 		ts.sendPacket(entry.RemoteAddress, packet)
@@ -343,7 +394,7 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 	if len(payload) > 0 {
 		handleData(ts, entry, header, payload)
 	}
-	
+
 	// 2. Process ACK if present and there are in flight packets
 	if header.Flags&TCP_ACK != 0 && len(socket.snd.inFlightPackets.packets) > 0 {
 		// Ignore old ACKs
@@ -358,7 +409,7 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 		socket.snd.inFlightPackets.mutex.Lock()
 		newPackets := make([]InFlightPacket, 0)
 		for _, pkt := range socket.snd.inFlightPackets.packets {
-			if pkt.SeqNum + uint32(pkt.Length) > header.AckNum {
+			if pkt.SeqNum+uint32(pkt.Length) > header.AckNum {
 				newPackets = append(newPackets, pkt)
 			} else {
 				// Use acknowledged packet for RTT calculation
@@ -401,7 +452,22 @@ func handleFIN(ts *TCPStack, entry *TCPTableEntry, header *TCPHeader) {
 	}
 
 	packet := serializeTCPPacket(ackHeader, nil)
-	ts.sendPacket(entry.RemoteAddress, packet)	
+	ts.sendPacket(entry.RemoteAddress, packet)
+
+	// We figure out if inflight packets is empty here to know if we should reset the RTO timer
+	if len(socket.snd.inFlightPackets.packets) == 0 {
+		socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+	}
+
+	// Add it to inflight packets
+	socket.snd.inFlightPackets.mutex.Lock()
+	socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+		SeqNum:      ackHeader.SeqNum,
+		Length:      0,
+		timeSent:    time.Now(),
+		flags:       ackHeader.Flags,
+		windowFlags: ackHeader.WindowSize,
+	})
 
 	// Update state depending on current state
 	if entry.State == TCP_ESTABLISHED {
@@ -456,11 +522,7 @@ func handleRST(ts *TCPStack, entry *TCPTableEntry) {
 // A waits in TIME_WAIT     TIME_WAIT   CLOSED
 // A transitions to CLOSED  CLOSED      CLOSED
 
-
 // Other state changes:
 // After sending first FIN: A goes from ESTABLISHED to FIN_WAIT_1
 // After sending FIN in CLOSE_WAIT: A goes to LAST_ACK
 // After waiting for 2*MSL in TIME_WAIT: A goes to CLOSED
-
-
-

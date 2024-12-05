@@ -44,7 +44,10 @@ func (ns *NormalSocket) VClose() error {
 	ns.snd.inFlightPackets.mutex.Unlock()
 	fmt.Println("unlocked packets mutex")
 
-	ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
+	// Manage the RTO timer (if there are inflightpackets, it is running and we leave it, if not, we reset)
+	if len(ns.snd.inFlightPackets.packets) == 0 {
+		ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
+	}
 
 	packet := serializeTCPPacket(header, nil)
 	err := ns.tcpStack.sendPacket(ns.RemoteAddress, packet)
@@ -127,6 +130,20 @@ func (ns *NormalSocket) VConnect(tcpStack *TCPStack, remoteAddress netip.Addr, r
 		Flags:      TCP_SYN,
 		WindowSize: ns.rcv.WND,
 	}
+
+	// Add to in-flight packets
+	ns.snd.inFlightPackets.mutex.Lock()
+	ns.snd.inFlightPackets.packets = append(ns.snd.inFlightPackets.packets, InFlightPacket{
+		data:     nil,
+		SeqNum:   ns.SeqNum,
+		Length:   0,
+		timeSent: time.Now(),
+		flags:    TCP_SYN,
+	})
+	ns.snd.inFlightPackets.mutex.Unlock()
+
+	// Reset RTO timer (always the first packet so we know to start it here)
+	ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
 
 	packet := serializeTCPPacket(header, nil)
 	err := tcpStack.sendPacket(remoteAddress, packet)
@@ -244,6 +261,11 @@ func (socket *NormalSocket) trySendData() error {
 			err = socket.tcpStack.sendPacket(socket.RemoteAddress, packet)
 			if err != nil {
 				return err
+			}
+			
+			// We figure out if inflight packets is empty here to know if we should reset the RTO timer
+			if len(socket.snd.inFlightPackets.packets) == 0 {
+				socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
 			}
 
 			// Add it to the inflight packets
@@ -480,7 +502,20 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 
 	fmt.Printf("Received %d total bytes\n", totalBytesReceived)
 	fmt.Println("Closing connection")
+
+	// Wait until you are in the right state so that there is no simultaneous close which is not implemented
 	
+	for {
+		table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
+		if err != nil {
+			return err
+		}
+
+		if table_entry.State == TCP_CLOSE_WAIT {
+			break
+		}
+	}
+
 	err = socket.VClose()
 	if err != nil {
 		return fmt.Errorf("error closing connection after file transfer: %v", err)

@@ -113,7 +113,6 @@ func (ts *TCPStack) sendPacket(dstAddr netip.Addr, data []byte) error {
 	// fmt.Printf("  Source IP: %v\n", srcIP)
 	// fmt.Printf("  Dest IP: %v\n", dstAddr.AsSlice())
 	// fmt.Printf("  First 20 bytes: %v\n", data[:20])
-
 	
 	return ts.ipStack.SendIP(dstAddr, ipstack.TCP_PROTOCOL, 16, data)
 }
