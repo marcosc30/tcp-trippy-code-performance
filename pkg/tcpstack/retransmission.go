@@ -53,6 +53,24 @@ func (socket *NormalSocket) retransmitPacket() error {
 		return err
 	}
 
+	// We remove it from inflight packets and add a new version with the new time sent
+	socket.snd.inFlightPackets.mutex.Lock()
+	newPackets := make([]InFlightPacket, 0)
+	for _, p := range socket.snd.inFlightPackets.packets {
+		if p.SeqNum != packet.SeqNum {
+			newPackets = append(newPackets, p)
+		}
+	}
+	socket.snd.inFlightPackets.packets = newPackets
+	socket.snd.inFlightPackets.packets = append(socket.snd.inFlightPackets.packets, InFlightPacket{
+		SeqNum:   packet.SeqNum,
+		flags:    packet.flags,
+		data:     packet.data,
+		timeSent: time.Now(),
+		windowFlags: packet.windowFlags,
+	})
+	socket.snd.inFlightPackets.mutex.Unlock()
+
 	// Increment retransmissions
 	socket.snd.retransmissions++
 

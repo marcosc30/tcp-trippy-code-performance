@@ -32,7 +32,12 @@ func (ns *NormalSocket) VClose() error {
 		WindowSize: ns.rcv.WND,
 	}
 
-	fmt.Print("vclose locking packets mutex")
+	// Manage the RTO timer (if there are inflightpackets, it is running and we leave it, if not, we reset)
+	if len(ns.snd.inFlightPackets.packets) == 0 {
+		ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
+	}
+
+	//fmt.Print("vclose locking packets mutex")
 	ns.snd.inFlightPackets.mutex.Lock()
 	ns.snd.inFlightPackets.packets = append(ns.snd.inFlightPackets.packets, InFlightPacket{
 		data:     nil,
@@ -42,12 +47,7 @@ func (ns *NormalSocket) VClose() error {
 		flags:    TCP_FIN,
 	})
 	ns.snd.inFlightPackets.mutex.Unlock()
-	fmt.Println("unlocked packets mutex")
-
-	// Manage the RTO timer (if there are inflightpackets, it is running and we leave it, if not, we reset)
-	if len(ns.snd.inFlightPackets.packets) == 0 {
-		ns.snd.RTOtimer.Reset(ns.snd.calculatedRTO)
-	}
+	//fmt.Println("unlocked packets mutex")
 
 	packet := serializeTCPPacket(header, nil)
 	err := ns.tcpStack.sendPacket(ns.RemoteAddress, packet)
