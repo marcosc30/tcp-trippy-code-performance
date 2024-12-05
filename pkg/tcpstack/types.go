@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-
 	"github.com/smallnest/ringbuffer"
 )
 

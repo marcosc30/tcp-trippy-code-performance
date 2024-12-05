@@ -401,7 +401,7 @@ func handleEstablishedPacket(ts *TCPStack, entry *TCPTableEntry, header *TCPHead
 
 func cleanUpInFlightPackets(socket *NormalSocket, header *TCPHeader) {
 	// Remove acknowledged packets from in-flight list
-	oldUNA := socket.snd.UNA
+	//oldUNA := socket.snd.UNA
 	socket.snd.inFlightPackets.mutex.Lock()
 	newPackets := make([]InFlightPacket, 0)
 	for _, pkt := range socket.snd.inFlightPackets.packets {
@@ -409,9 +409,11 @@ func cleanUpInFlightPackets(socket *NormalSocket, header *TCPHeader) {
 			newPackets = append(newPackets, pkt)
 		} else {
 			// Use acknowledged packet for RTT calculation
-			if pkt.SeqNum == oldUNA {
-				socket.computeRTO(pkt.SeqNum, pkt.timeSent)
-			}
+			//if pkt.SeqNum == oldUNA {
+			socket.computeRTO(pkt.SeqNum, pkt.timeSent)
+			socket.snd.RTOtimer.Reset(socket.snd.calculatedRTO)
+			// We restart the timer here because we've recalculated the RTO
+			//}
 		}
 	}
 	socket.snd.inFlightPackets.packets = newPackets

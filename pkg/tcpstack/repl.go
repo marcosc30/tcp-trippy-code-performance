@@ -130,7 +130,7 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 			fmt.Println("Invalid port number")
 			return
 		}
-		sendFile(ts, filePath, addr, uint16(port))
+		go sendFile(ts, filePath, addr, uint16(port))
 		
 	case "rf":
 		if len(args) != 3 {
@@ -143,7 +143,7 @@ func (ts *TCPStack) ReplInput(scanner *bufio.Scanner) {
 			fmt.Println("Invalid port number")
 			return
 		}
-		receiveFile(ts, destFile, uint16(port))
+		go receiveFile(ts, destFile, uint16(port))
 		
 	default:
 		fmt.Println("Unknown command. Type 'help' for available commands.")
@@ -343,9 +343,7 @@ func receiveFile(ts *TCPStack, destFile string, port uint16) {
 	// Receive the file
 	socket := ts.getSocketByID(socketID)
 	if normalSocket, ok := socket.(*NormalSocket); ok {
-		go normalSocket.VReceiveFile(destFile)
-
-		fmt.Printf("Receiving file\n")
+		normalSocket.VReceiveFile(destFile)
 	} else {
 		fmt.Println("Invalid socket type")
 		return

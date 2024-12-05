@@ -21,7 +21,7 @@ func (ns *NormalSocket) VClose() error {
 	}
 
 	// Send FIN packet
-	fmt.Println("ack num: ", ns.rcv.NXT)
+	//fmt.Println("ack num: ", ns.rcv.NXT)
 	header := &TCPHeader{
 		SourcePort: ns.LocalPort,
 		DestPort:   ns.RemotePort,
@@ -302,7 +302,6 @@ func (socket *NormalSocket) sendZeroWindowProbe() error {
 
 	for socket.snd.WND == 0 && retries < ZWP_RETRIES {
 		fmt.Println("Sending zero window probe")
-		fmt.Println("WND: ", socket.snd.WND)
 		header := &TCPHeader{
 			SourcePort: socket.LocalPort,
 			DestPort:   socket.RemotePort,
@@ -450,9 +449,14 @@ func (socket *NormalSocket) VSendFile(filename string) error {
 	fmt.Println("Closing connection")
 	
 	// Close the connection after sending the file
-	err = socket.VClose()
-	if err != nil {
-		return fmt.Errorf("error closing connection after file transfer: %v", err)
+	for {
+		if len(socket.snd.inFlightPackets.packets) == 0 {
+			err = socket.VClose()
+			if err != nil {
+				return fmt.Errorf("error closing connection after file transfer: %v", err)
+			}
+			break
+		}
 	}
 
 	return nil
@@ -477,11 +481,13 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 			return err
 		}
 
-		// If we're in CLOSE_WAIT state, it means we've received FIN from the sender
 		if table_entry.State == TCP_CLOSE_WAIT {
 			break
 		}
 
+		if socket.rcv.buf.Length() == 0 {
+			continue
+		}
 		n, err := socket.VRead(buffer)
 		if err != nil {
 			// Only return if it's not a connection closing error
@@ -490,6 +496,7 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 			}
 			break
 		}
+
 		totalBytesReceived += int64(n)
 
 		if n > 0 {
@@ -498,23 +505,15 @@ func (socket *NormalSocket) VReceiveFile(filename string) error {
 				return err
 			}
 		}
-	}
 
-	fmt.Printf("Received %d total bytes\n", totalBytesReceived)
-	fmt.Println("Closing connection")
-
-	// Wait until you are in the right state so that there is no simultaneous close which is not implemented
-	
-	for {
-		table_entry, err := socket.tcpStack.VFindTableEntry(socket.LocalAddress, socket.LocalPort, socket.RemoteAddress, socket.RemotePort)
-		if err != nil {
-			return err
-		}
-
+		// If we're in CLOSE_WAIT state, it means we've received FIN from the sender
 		if table_entry.State == TCP_CLOSE_WAIT {
 			break
 		}
 	}
+
+	fmt.Printf("Received %d total bytes\n", totalBytesReceived)
+	fmt.Println("Closing connection")
 
 	err = socket.VClose()
 	if err != nil {
